@@ -35,16 +35,7 @@ AMaidCharacter::AMaidCharacter()
 // Called when the game starts or when spawned
 void AMaidCharacter::BeginPlay()
 {
-	Super::BeginPlay();
-
-	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			Subsystem->AddMappingContext(MaidContext, 0);
-		}
-	}
-	
+	Super::BeginPlay();	
 }
 
 // Called every frame

@@ -44,6 +44,10 @@ void AMaidCharacter::BeginPlay()
 void AMaidCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	const UEnum* EnumPtr = StaticEnum<ECharacterState>();
+	FString Message = FString::Printf(TEXT("Character State: %s"), *EnumPtr->GetNameStringByValue(static_cast<int64>(CharacterState)));
+	GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Red, Message);
 }
 
 void AMaidCharacter::Move(const FInputActionValue& Value)
@@ -66,6 +70,15 @@ void AMaidCharacter::Move(const FInputActionValue& Value)
 	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 	// and scale by our input X, which represents X (horizontal) movement
 	AddMovementInput(RightDirection, MovementVector.X);
+}
+
+void AMaidCharacter::Jump()
+{
+	// only jump in idle, so we don't have weird behavior of jumping while character is playing the attack montage
+	if (CharacterState == ECharacterState::ECS_Idle)
+	{
+		Super::Jump();
+	}
 }
 
 void AMaidCharacter::Look(const FInputActionValue& Value)
@@ -112,8 +125,12 @@ void AMaidCharacter::CheckCombo_Implementation()
 {
 	if (CharacterState == ECharacterState::ECS_Attacking)
 	{
-		// if there were no inputs since our last input, don't continue the combo
-		if (CachedAttackInputTime <= 0.f) return;
+		// if there were no inputs since our last input, don't continue the combo and enter recovery mode
+		if (CachedAttackInputTime <= 0.f)
+		{
+			CharacterState = ECharacterState::ECS_Recovering;
+			return;
+		}
 
 		// reset the count so the player needs to make another input to continue the chain
 		CachedAttackInputTime = 0.f;
@@ -127,6 +144,14 @@ void AMaidCharacter::CheckCombo_Implementation()
 				AnimInstance->Montage_JumpToSection(ComboSectionNames[ComboCount], ComboAttackMontage);
 			}
 		}
+	}
+}
+
+void AMaidCharacter::RecoveryEnd_Implementation()
+{
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(.3f, ComboAttackMontage);
 	}
 }
 
@@ -154,7 +179,7 @@ void AMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		                                   &AMaidCharacter::ComboAttackStart);
 
 		// use the inherited jump actions
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AMaidCharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 	}
 }

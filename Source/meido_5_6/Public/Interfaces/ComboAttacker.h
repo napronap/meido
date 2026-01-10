@@ -26,4 +26,10 @@ public:
 	// but adding it like this registers this function to the reflection system
 	UFUNCTION(BlueprintNativeEvent, Category="Attacker")
 	void CheckCombo();
+
+	// performs the check for the recovery
+	// a character with the attacker interface will have a few recovery frames after the combo window ended
+	// same notes as above
+	UFUNCTION(BlueprintNativeEvent, Category="Attacker")
+	void RecoveryEnd();
 };

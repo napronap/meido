@@ -43,6 +43,7 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* JumpAction;
+	virtual void Jump() override;
 
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* ComboAttackAction;
@@ -58,7 +59,11 @@ protected:
 	int32 ComboIndex = 0;
 	float CachedAttackInputTime = 0.0f;
 	int32 ComboCount = 0;
+
+	// notifies
 	virtual void CheckCombo_Implementation() override;
+	virtual void RecoveryEnd_Implementation() override;
+	
 	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 

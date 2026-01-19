@@ -4,12 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "InputActionValue.h"
+#include "ActorComponents/MeiDouComponent.h"
 #include "GameFramework/Character.h"
 #include "Types/CharacterTypes.h"
 #include "Interfaces/ComboAttacker.h"
 #include "MaidCharacter.generated.h"
 
-class UCombatComponent;
+class UMeiDouComponent;
 class UInputMappingContext;
 class UInputAction;
 class USpringArmComponent;
@@ -35,23 +36,25 @@ protected:
 	virtual void BeginPlay() override;
 
 	/* Input actions */
-	UPROPERTY(EditAnywhere, Category = "Input")
+	UPROPERTY(EditAnywhere, Category = "Input|Basic")
 	UInputAction* MovementAction;
 
-	UPROPERTY(EditAnywhere, Category = "Input")
+	UPROPERTY(EditAnywhere, Category = "Input|Basic")
 	UInputAction* LookAction;
 
-	UPROPERTY(EditAnywhere, Category = "Input")
+	UPROPERTY(EditAnywhere, Category = "Input|Basic")
 	UInputAction* JumpAction;
 	virtual void Jump() override;
+	virtual void StopJumping() override;
 
-	UPROPERTY(EditAnywhere, Category = "Input")
+	UPROPERTY(EditAnywhere, Category = "Input|Basic")
 	UInputAction* ComboAttackAction;
 
 	/* Combat */
+	/* Basic combat */
 	UPROPERTY(EditAnywhere, Category="Combat|Combo")
 	UAnimMontage* ComboAttackMontage;
-
+	
 	// names of the sections in the anim montage defined above
 	UPROPERTY(EditAnywhere, Category="Combat|Combo")
 	TArray<FName> ComboSectionNames;
@@ -67,11 +70,33 @@ protected:
 	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
+	/* mei dou */
+	UPROPERTY()
+	UMeiDouComponent* MeiDouComponent;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
+	UInputAction* MeiDouMAction;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
+	UInputAction* MeiDouKAction;
+	
+	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
+	UInputAction* MeiDouNAction;
+
+	// needs to be on the system because it will be attached to a delegate
+	// apparently this is only a thing for dynamic delegates
+	UFUNCTION()
+	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
+
 	/* Action callbacks */
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void ComboAttackStart();
 	void ComboAttack();
+	void RegisterMeiDouInput(const EMeiDouInput Input);
+	void InputMeiDouM();
+	void InputMeiDouK();
+	void InputMeiDouN();
 	
 private:
 	ECharacterState CharacterState = ECharacterState::ECS_Idle;

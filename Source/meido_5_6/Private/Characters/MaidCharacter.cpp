@@ -5,6 +5,7 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "ActorComponents/MeiDouComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -38,6 +39,16 @@ AMaidCharacter::AMaidCharacter()
 void AMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
+
+	if (MeiDouComponent)
+	{
+		MeiDouComponent->OnComboResolved.AddDynamic(
+			this,
+			&AMaidCharacter::HandleMeiDouComboResolved
+		);
+	}
 }
 
 // Called every frame
@@ -46,7 +57,8 @@ void AMaidCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	const UEnum* EnumPtr = StaticEnum<ECharacterState>();
-	FString Message = FString::Printf(TEXT("Character State: %s"), *EnumPtr->GetNameStringByValue(static_cast<int64>(CharacterState)));
+	FString Message = FString::Printf(
+		TEXT("Character State: %s"), *EnumPtr->GetNameStringByValue(static_cast<int64>(CharacterState)));
 	GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Red, Message);
 }
 
@@ -77,8 +89,15 @@ void AMaidCharacter::Jump()
 	// only jump in idle, so we don't have weird behavior of jumping while character is playing the attack montage
 	if (CharacterState == ECharacterState::ECS_Idle)
 	{
+		CharacterState = ECharacterState::ECS_Jumping;
 		Super::Jump();
 	}
+}
+
+void AMaidCharacter::StopJumping()
+{
+	CharacterState = ECharacterState::ECS_Idle;
+	Super::StopJumping();
 }
 
 void AMaidCharacter::Look(const FInputActionValue& Value)
@@ -91,15 +110,19 @@ void AMaidCharacter::Look(const FInputActionValue& Value)
 
 void AMaidCharacter::ComboAttackStart()
 {
-	// if we are currently attacking, register this attack
-	if (CharacterState == ECharacterState::ECS_Attacking)
+	// only attack if we are not in the air, at least for now
+	if (!GetCharacterMovement()->IsFalling())
 	{
-		CachedAttackInputTime = GetWorld()->GetTimeSeconds();
-
-		return;
+		// if we are currently attacking, register this attack
+		if (CharacterState == ECharacterState::ECS_Attacking)
+		{
+			CachedAttackInputTime = GetWorld()->GetTimeSeconds();
+	
+			return;
+		}
+		
+		ComboAttack();
 	}
-
-	ComboAttack();
 }
 
 void AMaidCharacter::ComboAttack()
@@ -162,6 +185,47 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	CachedAttackInputTime = 0.f;
 }
 
+void AMaidCharacter::InputMeiDouM()
+{
+	RegisterMeiDouInput(EMeiDouInput::EMDI_Moe);
+}
+
+void AMaidCharacter::InputMeiDouK()
+{
+	RegisterMeiDouInput(EMeiDouInput::EMDI_Kyun);
+}
+
+void AMaidCharacter::InputMeiDouN()
+{
+	RegisterMeiDouInput(EMeiDouInput::EMDI_Nyan);
+}
+
+void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
+{
+	if (!MeiDouComponent) return;
+	MeiDouComponent->RegisterInput(Input);
+}
+
+void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result)
+{
+	if (!GEngine)
+	{
+		return;
+	}
+
+	const FString Message = FString::Printf(
+		TEXT("MeiDou Combo Resolved: %s"),
+		*Result.ComboId.ToString()
+	);
+
+	GEngine->AddOnScreenDebugMessage(
+		-1,
+		2.5f,
+		FColor::Green,
+		Message
+	);
+}
+
 
 // Called to bind functionality to input
 void AMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -178,8 +242,13 @@ void AMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		EnhancedInputComponent->BindAction(ComboAttackAction, ETriggerEvent::Started, this,
 		                                   &AMaidCharacter::ComboAttackStart);
 
-		// use the inherited jump actions
+		// override inherited jump actions
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AMaidCharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AMaidCharacter::StopJumping);
+
+		// mei dou related actions
+		EnhancedInputComponent->BindAction(MeiDouMAction, ETriggerEvent::Started, this, &AMaidCharacter::InputMeiDouM);
+		EnhancedInputComponent->BindAction(MeiDouKAction, ETriggerEvent::Started, this, &AMaidCharacter::InputMeiDouK);
+		EnhancedInputComponent->BindAction(MeiDouNAction, ETriggerEvent::Started, this, &AMaidCharacter::InputMeiDouN);
 	}
 }

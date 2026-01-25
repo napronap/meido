@@ -5,6 +5,7 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "ActorComponents/AttackComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
@@ -40,6 +41,7 @@ void AMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	AttackComponent = FindComponentByClass<UAttackComponent>();
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
 
 	if (MeiDouComponent)
@@ -127,6 +129,7 @@ void AMaidCharacter::ComboAttackStart()
 
 void AMaidCharacter::ComboAttack()
 {
+	AttackComponent->StartAttack();
 	CharacterState = ECharacterState::ECS_Attacking;
 
 	ComboCount = 0;

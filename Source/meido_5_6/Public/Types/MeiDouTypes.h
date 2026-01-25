@@ -9,6 +9,9 @@ enum class EMeiDouInput : uint8
 	EMDI_Moe UMETA(DisplayName = "Moe"),
 	EMDI_Kyun UMETA(DisplayName = "Kyun"),
 	EMDI_Nyan UMETA(DisplayName = "Nyan"),
+
+	// for initialization purposes
+	None UMETA(DisplayName = "None"),
 };
 
 // key for the value of the combo
@@ -19,13 +22,13 @@ struct FMeiDouComboKey
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere)
-	EMeiDouInput A;
+	EMeiDouInput A = EMeiDouInput::None;
 
 	UPROPERTY(EditAnywhere)
-	EMeiDouInput B;
+	EMeiDouInput B = EMeiDouInput::None;
 
 	UPROPERTY(EditAnywhere)
-	EMeiDouInput C;
+	EMeiDouInput C = EMeiDouInput::None;
 
 	// overload the == operator when comparing two structs of type FMeiDouComboKey
 	bool operator==(const FMeiDouComboKey& Other) const

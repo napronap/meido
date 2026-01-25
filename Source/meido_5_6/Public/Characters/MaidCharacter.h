@@ -10,6 +10,7 @@
 #include "Interfaces/ComboAttacker.h"
 #include "MaidCharacter.generated.h"
 
+class UAttackComponent;
 class UMeiDouComponent;
 class UInputMappingContext;
 class UInputAction;
@@ -69,6 +70,8 @@ protected:
 	
 	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
+	UAttackComponent* AttackComponent;
 
 	/* mei dou */
 	UPROPERTY()

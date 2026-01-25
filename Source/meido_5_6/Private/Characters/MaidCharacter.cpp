@@ -6,11 +6,13 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "ActorComponents/AttackComponent.h"
+#include "ActorComponents/LockOnComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
+#include "Interfaces/Targetable.h"
 
 // Sets default values
 AMaidCharacter::AMaidCharacter()
@@ -43,6 +45,7 @@ void AMaidCharacter::BeginPlay()
 
 	AttackComponent = FindComponentByClass<UAttackComponent>();
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
+	LockOnComponent = FindComponentByClass<ULockOnComponent>();
 
 	if (MeiDouComponent)
 	{
@@ -58,10 +61,48 @@ void AMaidCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (LockOnComponent && LockOnComponent->IsLockedOn())
+	{
+		AActor* Target = LockOnComponent->GetCurrentTarget();
+		if (Target)
+		{
+			RotateCameraToTarget(Target, DeltaTime);
+		}
+	}
+
 	const UEnum* EnumPtr = StaticEnum<ECharacterState>();
 	FString Message = FString::Printf(
 		TEXT("Character State: %s"), *EnumPtr->GetNameStringByValue(static_cast<int64>(CharacterState)));
 	GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Red, Message);
+}
+
+void AMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
+{
+	FVector TargetLocation;
+
+	if (Target->Implements<UTargetable>())
+	{
+		TargetLocation =
+			ITargetable::Execute_GetTargetLocation(Target);
+	}
+	else
+	{
+		TargetLocation = Target->GetActorLocation();
+	}
+
+	const FVector CameraLocation = ViewCamera->GetComponentLocation();
+	const FVector Direction = (TargetLocation - CameraLocation).GetSafeNormal();
+
+	FRotator DesiredRotation = Direction.Rotation();
+	
+	FRotator CurrentRotation = Controller->GetControlRotation();
+	FRotator NewRotation(
+		CurrentRotation.Pitch,
+		DesiredRotation.Yaw,
+		CurrentRotation.Roll
+	);
+
+	Controller->SetControlRotation(NewRotation);
 }
 
 void AMaidCharacter::Move(const FInputActionValue& Value)
@@ -119,10 +160,10 @@ void AMaidCharacter::ComboAttackStart()
 		if (CharacterState == ECharacterState::ECS_Attacking)
 		{
 			CachedAttackInputTime = GetWorld()->GetTimeSeconds();
-	
+
 			return;
 		}
-		
+
 		ComboAttack();
 	}
 }
@@ -203,6 +244,31 @@ void AMaidCharacter::InputMeiDouN()
 	RegisterMeiDouInput(EMeiDouInput::EMDI_Nyan);
 }
 
+void AMaidCharacter::ToggleLockOn()
+{
+	if (!LockOnComponent) return;
+
+	GEngine->AddOnScreenDebugMessage(
+		-1, 1.5f, FColor::Yellow, TEXT("Lock on attempted")
+	);
+
+	if (LockOnComponent->IsLockedOn())
+	{
+		LockOnComponent->ClearLockOn();
+	}
+	else
+	{
+		const bool bLocked = LockOnComponent->TryLockOn();
+
+		if (bLocked && GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1, 1.5f, FColor::Yellow, TEXT("LOCK ON")
+			);
+		}
+	}
+}
+
 void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 {
 	if (!MeiDouComponent) return;
@@ -253,5 +319,9 @@ void AMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		EnhancedInputComponent->BindAction(MeiDouMAction, ETriggerEvent::Started, this, &AMaidCharacter::InputMeiDouM);
 		EnhancedInputComponent->BindAction(MeiDouKAction, ETriggerEvent::Started, this, &AMaidCharacter::InputMeiDouK);
 		EnhancedInputComponent->BindAction(MeiDouNAction, ETriggerEvent::Started, this, &AMaidCharacter::InputMeiDouN);
+
+		// lock on actions
+		EnhancedInputComponent->BindAction(LockOnInputAction, ETriggerEvent::Started, this,
+		                                   &AMaidCharacter::ToggleLockOn);
 	}
 }

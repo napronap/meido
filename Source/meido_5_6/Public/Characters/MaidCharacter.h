@@ -10,6 +10,7 @@
 #include "Interfaces/ComboAttacker.h"
 #include "MaidCharacter.generated.h"
 
+class ULockOnComponent;
 class UAttackComponent;
 class UMeiDouComponent;
 class UInputMappingContext;
@@ -55,7 +56,7 @@ protected:
 	/* Basic combat */
 	UPROPERTY(EditAnywhere, Category="Combat|Combo")
 	UAnimMontage* ComboAttackMontage;
-	
+
 	// names of the sections in the anim montage defined above
 	UPROPERTY(EditAnywhere, Category="Combat|Combo")
 	TArray<FName> ComboSectionNames;
@@ -67,10 +68,11 @@ protected:
 	// notifies
 	virtual void CheckCombo_Implementation() override;
 	virtual void RecoveryEnd_Implementation() override;
-	
+
 	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
+	// may have to move later
 	UAttackComponent* AttackComponent;
 
 	/* mei dou */
@@ -82,7 +84,7 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
 	UInputAction* MeiDouKAction;
-	
+
 	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
 	UInputAction* MeiDouNAction;
 
@@ -90,6 +92,15 @@ protected:
 	// apparently this is only a thing for dynamic delegates
 	UFUNCTION()
 	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
+
+	/* lock on */
+	UPROPERTY()
+	ULockOnComponent* LockOnComponent;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input|LockOn")
+	UInputAction* LockOnInputAction;
+
+	void RotateCameraToTarget(AActor* Target, float DeltaTime);
 
 	/* Action callbacks */
 	void Move(const FInputActionValue& Value);
@@ -100,7 +111,8 @@ protected:
 	void InputMeiDouM();
 	void InputMeiDouK();
 	void InputMeiDouN();
-	
+	void ToggleLockOn();
+
 private:
 	ECharacterState CharacterState = ECharacterState::ECS_Idle;
 

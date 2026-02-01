@@ -94,7 +94,7 @@ void AMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
 	const FVector Direction = (TargetLocation - CameraLocation).GetSafeNormal();
 
 	FRotator DesiredRotation = Direction.Rotation();
-	
+
 	FRotator CurrentRotation = Controller->GetControlRotation();
 	FRotator NewRotation(
 		CurrentRotation.Pitch,
@@ -248,13 +248,13 @@ void AMaidCharacter::ToggleLockOn()
 {
 	if (!LockOnComponent) return;
 
-	GEngine->AddOnScreenDebugMessage(
-		-1, 1.5f, FColor::Yellow, TEXT("Lock on attempted")
-	);
 
 	if (LockOnComponent->IsLockedOn())
 	{
 		LockOnComponent->ClearLockOn();
+		GEngine->AddOnScreenDebugMessage(
+			-1, 1.5f, FColor::Yellow, TEXT("Lock on cleared")
+		);
 	}
 	else
 	{
@@ -268,6 +268,24 @@ void AMaidCharacter::ToggleLockOn()
 		}
 	}
 }
+
+void AMaidCharacter::OnLockOnSwitch(const FInputActionValue& Value)
+{
+	if (!LockOnComponent) return;
+	const float Axis = Value.Get<float>();
+
+	const FString Message = FString::Printf(
+		TEXT("Lockon switch input: %f"),
+		Axis
+	);
+
+	GEngine->AddOnScreenDebugMessage(
+		-1, 1.5f, FColor::Yellow, Message
+	);
+
+	LockOnComponent->HandleSwitchInput(Axis);
+}
+
 
 void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 {
@@ -323,5 +341,7 @@ void AMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		// lock on actions
 		EnhancedInputComponent->BindAction(LockOnInputAction, ETriggerEvent::Started, this,
 		                                   &AMaidCharacter::ToggleLockOn);
+		EnhancedInputComponent->BindAction(ChangeLockOnInputAction, ETriggerEvent::Started, this,
+		                                   &AMaidCharacter::OnLockOnSwitch);
 	}
 }

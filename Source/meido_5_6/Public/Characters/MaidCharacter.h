@@ -88,6 +88,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
 	UInputAction* MeiDouNAction;
 
+	// since M K N would be defaults for all characters, I don't think
+	// there's a problem with having the anim montages referenced here
+	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
+	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
+
 	// needs to be on the system because it will be attached to a delegate
 	// apparently this is only a thing for dynamic delegates
 	UFUNCTION()
@@ -99,6 +104,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category="Input|LockOn")
 	UInputAction* LockOnInputAction;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input|LockOn")
+	UInputAction* ChangeLockOnInputAction;
 
 	void RotateCameraToTarget(AActor* Target, float DeltaTime);
 
@@ -112,6 +120,7 @@ protected:
 	void InputMeiDouK();
 	void InputMeiDouN();
 	void ToggleLockOn();
+	void OnLockOnSwitch(const FInputActionValue& Value);
 
 private:
 	ECharacterState CharacterState = ECharacterState::ECS_Idle;

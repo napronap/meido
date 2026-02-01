@@ -5,6 +5,7 @@
 #include "GameFramework/Character.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Interfaces/Targetable.h"
+#include "Algo/Sort.h" // arriba en el cpp
 
 // Sets default values for this component's properties
 ULockOnComponent::ULockOnComponent()
@@ -68,44 +69,80 @@ void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 	}
 }
 
-AActor* ULockOnComponent::SelectBestTarget(const TArray<AActor*>& Targets) const
-{
-	AActor* BestTarget = nullptr;
-	float BestDistanceSq = TNumericLimits<float>::Max();
-
-	for (AActor* Target : Targets)
-	{
-		const float DistSq = FVector::Dist(OwnerCharacter->GetActorLocation(), Target->GetActorLocation());
-
-		if (DistSq < BestDistanceSq)
-		{
-			BestDistanceSq = DistSq;
-			BestTarget = Target;
-		}
-	}
-
-	return BestTarget;
-}
-
 bool ULockOnComponent::TryLockOn()
 {
-	if (!OwnerCharacter) return false;
+	if (!OwnerCharacter)
+		return false;
+
+	APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PC)
+		return false;
 
 	TArray<AActor*> Candidates;
 	FindTargets(Candidates);
 
-	if (Candidates.Num() > 0)
+	if (Candidates.Num() == 0)
+		return false;
+
+	int32 ViewportX, ViewportY;
+	PC->GetViewportSize(ViewportX, ViewportY);
+
+	const FVector2D ScreenCenter(
+		ViewportX * 0.5f,
+		ViewportY * 0.5f
+	);
+
+	AActor* BestTarget = nullptr;
+	float BestDistSq = TNumericLimits<float>::Max();
+
+	for (AActor* Target : Candidates)
 	{
-		CurrentTarget = SelectBestTarget(Candidates);
-		return CurrentTarget != nullptr;
+		FVector TargetLocation = Target->GetActorLocation();
+
+
+		// Si implementa ITargetable, usamos su punto de target
+		if (Target->Implements<UTargetable>())
+		{
+			TargetLocation = ITargetable::Execute_GetTargetLocation(Target);
+		}
+
+		FVector2D ScreenPos;
+		const bool bOnScreen =
+			PC->ProjectWorldLocationToScreen(TargetLocation, ScreenPos);
+
+		if (!bOnScreen)
+			continue;
+
+		// Opcional: margen para evitar bordes extremos
+		if (ScreenPos.X < 0.f || ScreenPos.Y < 0.f ||
+			ScreenPos.X > ViewportX || ScreenPos.Y > ViewportY)
+			continue;
+
+		const float DistSq =
+			FVector2D::DistSquared(ScreenPos, ScreenCenter);
+
+		if (DistSq < BestDistSq)
+		{
+			BestDistSq = DistSq;
+			BestTarget = Target;
+		}
+	}
+
+	if (BestTarget)
+	{
+		CurrentTarget = BestTarget;
+		bCanSwitchTarget = true; // reset
+		return true;
 	}
 
 	return false;
 }
 
+
 void ULockOnComponent::ClearLockOn()
 {
 	CurrentTarget = nullptr;
+	bCanSwitchTarget = true;
 }
 
 bool ULockOnComponent::IsLockedOn()
@@ -117,6 +154,129 @@ AActor* ULockOnComponent::GetCurrentTarget()
 {
 	return CurrentTarget;
 }
+
+void ULockOnComponent::HandleSwitchInput(float AxisValue)
+{
+	if (!IsLockedOn())
+		return;
+
+	if (!bCanSwitchTarget)
+	{
+		if (FMath::Abs(AxisValue) < NeutralThreshold)
+		{
+			bCanSwitchTarget = true;
+		}
+		return;
+	}
+
+	if (AxisValue > SwitchThreshold)
+	{
+		SwitchTarget(+1);
+		bCanSwitchTarget = false;
+	}
+	else if (AxisValue < -SwitchThreshold)
+	{
+		SwitchTarget(-1);
+		bCanSwitchTarget = false;
+	}
+}
+
+
+
+void ULockOnComponent::SwitchTarget(int32 Direction)
+{
+	if (!OwnerCharacter || !CurrentTarget)
+		return;
+
+	APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PC)
+		return;
+
+	TArray<AActor*> Candidates;
+	FindTargets(Candidates);
+
+	if (Candidates.Num() <= 1)
+		return;
+
+	int32 ViewportX, ViewportY;
+	PC->GetViewportSize(ViewportX, ViewportY);
+
+	struct FScreenTarget
+	{
+		AActor* Actor = nullptr;
+		FVector2D ScreenPos = FVector2D::ZeroVector;
+	};
+
+	TArray<FScreenTarget> Visible;
+
+	Visible.Reserve(Candidates.Num());
+
+	auto GetTargetWorldPos = [](AActor* Actor) -> FVector
+	{
+		if (!Actor) return FVector::ZeroVector;
+
+		if (Actor->Implements<UTargetable>())
+		{
+			return ITargetable::Execute_GetTargetLocation(Actor);
+		}
+
+		return Actor->GetActorLocation();
+	};
+
+	// 1) Proyectar todos y quedarse con los que están en pantalla
+	for (AActor* Target : Candidates)
+	{
+		if (!Target) continue;
+
+		const FVector WorldPos = GetTargetWorldPos(Target);
+
+		FVector2D ScreenPos;
+		if (!PC->ProjectWorldLocationToScreen(WorldPos, ScreenPos))
+			continue;
+
+		// on-screen check
+		if (ScreenPos.X < 0.f || ScreenPos.X > ViewportX ||
+			ScreenPos.Y < 0.f || ScreenPos.Y > ViewportY)
+			continue;
+
+		Visible.Add({Target, ScreenPos});
+	}
+
+	if (Visible.Num() <= 1)
+		return;
+
+	// 2) Ordenar por X (izquierda → derecha)
+	Algo::Sort(Visible, [](const FScreenTarget& A, const FScreenTarget& B)
+	{
+		return A.ScreenPos.X < B.ScreenPos.X;
+	});
+
+	// 3) Encontrar el índice del current
+	int32 CurrentIndex = INDEX_NONE;
+	for (int32 i = 0; i < Visible.Num(); ++i)
+	{
+		if (Visible[i].Actor == CurrentTarget)
+		{
+			CurrentIndex = i;
+			break;
+		}
+	}
+
+	// Si el current no está en la lista visible (raro pero puede pasar), no switch
+	if (CurrentIndex == INDEX_NONE)
+		return;
+
+	// 4) Elegir vecino: Direction +1 = derecha, -1 = izquierda
+	const int32 Step = (Direction > 0) ? +1 : -1;
+	const int32 NextIndex = CurrentIndex + Step;
+
+	// Si no querés wrap, dejalo así:
+	if (NextIndex < 0 || NextIndex >= Visible.Num())
+		return;
+
+	CurrentTarget = Visible[NextIndex].Actor;
+}
+
 
 // Called every frame
 void ULockOnComponent::TickComponent(float DeltaTime, ELevelTick TickType,

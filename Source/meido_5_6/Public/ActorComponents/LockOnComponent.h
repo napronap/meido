@@ -29,6 +29,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	AActor* GetCurrentTarget();
 
+	UFUNCTION(BlueprintCallable)
+	void HandleSwitchInput(float AxisValue);
+	void SwitchTarget(int32 Direction);
+
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -48,6 +52,11 @@ protected:
 
 	UPROPERTY()
 	AActor* CurrentTarget = nullptr;
+
+	bool bCanSwitchTarget = true;
+
+	float SwitchThreshold = 0.7f;
+	float NeutralThreshold = 0.4f;
 
 public:
 	// Called every frame

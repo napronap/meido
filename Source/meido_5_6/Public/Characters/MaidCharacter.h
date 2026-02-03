@@ -1,133 +1,86 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
-#include "InputActionValue.h"
-#include "ActorComponents/MeiDouComponent.h"
 #include "GameFramework/Character.h"
 #include "Types/CharacterTypes.h"
 #include "Interfaces/ComboAttacker.h"
+#include "Types/MeiDouTypes.h"
 #include "MaidCharacter.generated.h"
 
-class ULockOnComponent;
 class UAttackComponent;
 class UMeiDouComponent;
-class UInputMappingContext;
-class UInputAction;
-class USpringArmComponent;
-class UCameraComponent;
+class ULockOnComponent;
 class UAnimMontage;
 
-UCLASS()
+UCLASS(Abstract)
 class MEIDO_5_6_API AMaidCharacter : public ACharacter, public IComboAttacker
 {
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this character's properties
 	AMaidCharacter();
 
-	// Called every frame
 	virtual void Tick(float DeltaTime) override;
-
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 protected:
 	virtual void BeginPlay() override;
 
-	/* Input actions */
-	UPROPERTY(EditAnywhere, Category = "Input|Basic")
-	UInputAction* MovementAction;
-
-	UPROPERTY(EditAnywhere, Category = "Input|Basic")
-	UInputAction* LookAction;
-
-	UPROPERTY(EditAnywhere, Category = "Input|Basic")
-	UInputAction* JumpAction;
+	/* =========================
+	 *  CORE MOVEMENT / LOOK
+	 * ========================= */
+	void DoMove(float Right, float Forward);
+	void DoLook(float Yaw, float Pitch);
 	virtual void Jump() override;
 	virtual void StopJumping() override;
 
-	UPROPERTY(EditAnywhere, Category = "Input|Basic")
-	UInputAction* ComboAttackAction;
+	/* =========================
+	 *  STATE
+	 * ========================= */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State")
+	ECharacterState CharacterState = ECharacterState::ECS_Idle;
 
-	/* Combat */
-	/* Basic combat */
+	/* =========================
+	 *  COMBAT
+	 * ========================= */
 	UPROPERTY(EditAnywhere, Category="Combat|Combo")
 	UAnimMontage* ComboAttackMontage;
 
-	// names of the sections in the anim montage defined above
 	UPROPERTY(EditAnywhere, Category="Combat|Combo")
 	TArray<FName> ComboSectionNames;
 
 	int32 ComboIndex = 0;
-	float CachedAttackInputTime = 0.0f;
 	int32 ComboCount = 0;
+	float CachedAttackInputTime = 0.0f;
 
-	// notifies
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
+	UAttackComponent* AttackComponent;
+
+	void DoStartComboAttack();
+	void DoContinueCombo();
+
 	virtual void CheckCombo_Implementation() override;
 	virtual void RecoveryEnd_Implementation() override;
 
 	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	// may have to move later
-	UAttackComponent* AttackComponent;
-
-	/* mei dou */
-	UPROPERTY()
+	/* =========================
+	 *  MEIDOU SYSTEM
+	 * ========================= */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
 	UMeiDouComponent* MeiDouComponent;
 
-	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
-	UInputAction* MeiDouMAction;
+	void RegisterMeiDouInput(EMeiDouInput Input);
 
-	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
-	UInputAction* MeiDouKAction;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
-	UInputAction* MeiDouNAction;
-
-	// since M K N would be defaults for all characters, I don't think
-	// there's a problem with having the anim montages referenced here
-	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
-	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
-
-	// needs to be on the system because it will be attached to a delegate
-	// apparently this is only a thing for dynamic delegates
 	UFUNCTION()
 	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
 
-	/* lock on */
-	UPROPERTY()
+	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
+	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
+
+	/* =========================
+	 *  LOCK ON (LOGIC ONLY)
+	 * ========================= */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LockOn")
 	ULockOnComponent* LockOnComponent;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|LockOn")
-	UInputAction* LockOnInputAction;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|LockOn")
-	UInputAction* ChangeLockOnInputAction;
-
-	void RotateCameraToTarget(AActor* Target, float DeltaTime);
-
-	/* Action callbacks */
-	void Move(const FInputActionValue& Value);
-	void Look(const FInputActionValue& Value);
-	void ComboAttackStart();
-	void ComboAttack();
-	void RegisterMeiDouInput(const EMeiDouInput Input);
-	void InputMeiDouM();
-	void InputMeiDouK();
-	void InputMeiDouN();
-	void ToggleLockOn();
-	void OnLockOnSwitch(const FInputActionValue& Value);
-
-private:
-	ECharacterState CharacterState = ECharacterState::ECS_Idle;
-
-	UPROPERTY(VisibleAnywhere)
-	USpringArmComponent* CameraBoom;
-
-	UPROPERTY(VisibleAnywhere)
-	UCameraComponent* ViewCamera;
 };

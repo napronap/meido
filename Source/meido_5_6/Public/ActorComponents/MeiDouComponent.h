@@ -50,6 +50,11 @@ public:
 
 	UPROPERTY(EditDefaultsOnly)
 	UMeiDouComboData* ComboData;
+	
+	const TArray<EMeiDouInput>& GetInputBuffer() const;
+	
+	// Will return the amount of times the input argument is inside the current buffer
+	int32 GetInputCount(EMeiDouInput Input) const;
 
 protected:
 	// Called when the game starts

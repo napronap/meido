@@ -10,6 +10,30 @@ UMeiDouComponent::UMeiDouComponent()
 }
 
 
+const TArray<EMeiDouInput>& UMeiDouComponent::GetInputBuffer() const
+{
+	return InputBuffer;
+}
+
+int32 UMeiDouComponent::GetInputCount(EMeiDouInput Input) const
+{
+	int32 Count = 0;
+
+	for (int32 i = 0; i < InputBuffer.Num(); i++)
+	{
+		if (InputBuffer[i] == Input)
+		{
+			Count++;
+		}
+		else
+		{
+			break;
+		}
+	}
+	
+	return Count;
+}
+
 void UMeiDouComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -47,7 +71,7 @@ void UMeiDouComponent::TryResolve()
 	Key.A = InputBuffer[0];
 	Key.B = InputBuffer[1];
 	Key.C = InputBuffer[2];
-	
+
 	if (const FMeiDouComboDefinition* Def = ComboData->Combos.Find(Key))
 	{
 		FMeiDouResolvedCombo Result;
@@ -98,5 +122,3 @@ void UMeiDouComponent::OnInputTimeout()
 	);
 	InputBuffer.Reset();
 }
-
-

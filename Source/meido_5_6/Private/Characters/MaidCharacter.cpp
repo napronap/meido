@@ -21,7 +21,7 @@ AMaidCharacter::AMaidCharacter()
 
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 400.f, 0.f);
-	
+
 	OnAttackMontageEnded.BindUObject(this, &AMaidCharacter::AttackMontageEnded);
 }
 
@@ -65,7 +65,7 @@ void AMaidCharacter::DoMove(float Right, float Forward)
 
 		// same thing, given the yaw rotation give me the Y, since Y is right in UE
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-		
+
 		// scale that forward by mov vector Y because we have Y axis representing fw/bw directions
 		AddMovementInput(ForwardDirection, Forward);
 		// and scale by our input X, which represents X (horizontal) movement
@@ -176,7 +176,19 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 {
 	if (!MeiDouComponent) return;
-	MeiDouComponent->RegisterInput(Input);
+
+	if (UMeiDouPoseDataAsset* Pose = MeiDouPoseDataMap[Input])
+	{
+		MeiDouComponent->RegisterInput(Input);
+
+		const int32 InputCount = MeiDouComponent->GetInputCount(Input);
+		
+		PlayAnimMontage(
+			InputCount % 2 == 0 ? Pose->MirroredMontage : Pose->Montage,
+			Pose->PlayRate,
+			FName("Pose")
+		);
+	}
 }
 
 void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result)

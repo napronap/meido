@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MeiDouPoseDataAsset.h"
 #include "GameFramework/Character.h"
 #include "Types/CharacterTypes.h"
 #include "Interfaces/ComboAttacker.h"
@@ -25,23 +26,23 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	/* =========================
-	 *  CORE MOVEMENT / LOOK
-	 * ========================= */
+	/*
+	 *	movement (maybe put camera in player maid class because AI maid won't use it
+	 */
 	void DoMove(float Right, float Forward);
 	void DoLook(float Yaw, float Pitch);
 	virtual void Jump() override;
 	virtual void StopJumping() override;
 
-	/* =========================
-	 *  STATE
-	 * ========================= */
+	/*
+	 * State
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State")
 	ECharacterState CharacterState = ECharacterState::ECS_Idle;
 
-	/* =========================
-	 *  COMBAT
-	 * ========================= */
+	/*
+	 * Combat
+	 */
 	UPROPERTY(EditAnywhere, Category="Combat|Combo")
 	UAnimMontage* ComboAttackMontage;
 
@@ -64,11 +65,14 @@ protected:
 	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	/* =========================
-	 *  MEIDOU SYSTEM
-	 * ========================= */
+	/*
+	 * mei dou
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
 	UMeiDouComponent* MeiDouComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
+	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
 
 	void RegisterMeiDouInput(EMeiDouInput Input);
 
@@ -78,9 +82,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
 
-	/* =========================
-	 *  LOCK ON (LOGIC ONLY)
-	 * ========================= */
+	/*
+	 * lock on
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LockOn")
 	ULockOnComponent* LockOnComponent;
 };

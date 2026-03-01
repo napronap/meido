@@ -181,6 +181,11 @@ void ULockOnComponent::HandleSwitchInput(float AxisValue)
 	}
 }
 
+void ULockOnComponent::HandleSwitchReleased()
+{
+	bCanSwitchTarget = true;
+}
+
 
 
 void ULockOnComponent::SwitchTarget(int32 Direction)
@@ -268,11 +273,17 @@ void ULockOnComponent::SwitchTarget(int32 Direction)
 
 	// 4) Elegir vecino: Direction +1 = derecha, -1 = izquierda
 	const int32 Step = (Direction > 0) ? +1 : -1;
-	const int32 NextIndex = CurrentIndex + Step;
+	int32 NextIndex = CurrentIndex + Step;
 
 	// Si no querés wrap, dejalo así:
-	if (NextIndex < 0 || NextIndex >= Visible.Num())
-		return;
+	if (NextIndex < 0)
+	{
+		NextIndex = Visible.Num() - 1;
+	}
+	else if (NextIndex >= Visible.Num())
+	{
+		NextIndex = 0;
+	}
 
 	CurrentTarget = Visible[NextIndex].Actor;
 }

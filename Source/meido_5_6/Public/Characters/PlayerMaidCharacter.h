@@ -70,6 +70,7 @@ protected:
 
 	void ToggleLockOn();
 	void OnLockOnSwitch(const FInputActionValue& Value);
+	void OnLockOnSwitchReleased(const FInputActionValue& Value);
 
 	/*
 	 * Camera

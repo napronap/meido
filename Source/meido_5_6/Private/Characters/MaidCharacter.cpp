@@ -6,8 +6,27 @@
 #include "ActorComponents/AttackComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
+#include "AnimInstances/MaidAnimInstance.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
+
+namespace
+{
+const FName MeiDouPoseSectionName(TEXT("Pose"));
+
+void SetMeiDouMirrorFlag(USkeletalMeshComponent* Mesh, bool bShouldMirror)
+{
+	if (!Mesh)
+	{
+		return;
+	}
+
+	if (UMaidAnimInstance* MaidAnimInstance = Cast<UMaidAnimInstance>(Mesh->GetAnimInstance()))
+	{
+		MaidAnimInstance->bShouldMirror = bShouldMirror;
+	}
+}
+}
 
 // Sets default values
 AMaidCharacter::AMaidCharacter()
@@ -36,9 +55,19 @@ void AMaidCharacter::BeginPlay()
 
 	if (MeiDouComponent)
 	{
+		MeiDouComponent->OnPoseAnimationRequested.AddDynamic(
+			this,
+			&AMaidCharacter::HandleMeiDouPoseAnimationRequested
+		);
+
 		MeiDouComponent->OnComboResolved.AddDynamic(
 			this,
 			&AMaidCharacter::HandleMeiDouComboResolved
+		);
+
+		MeiDouComponent->OnMeiDouControlLockChanged.AddDynamic(
+			this,
+			&AMaidCharacter::HandleMeiDouControlLockChanged
 		);
 	}
 }
@@ -51,6 +80,11 @@ void AMaidCharacter::Tick(float DeltaTime)
 
 void AMaidCharacter::DoMove(float Right, float Forward)
 {
+	if (CharacterState == ECharacterState::ECS_MeiDouActive)
+	{
+		return;
+	}
+
 	if (GetController() != nullptr)
 	{
 		const FRotator ControlRotation = GetControlRotation();
@@ -85,7 +119,11 @@ void AMaidCharacter::Jump()
 
 void AMaidCharacter::StopJumping()
 {
-	CharacterState = ECharacterState::ECS_Idle;
+	if (CharacterState == ECharacterState::ECS_Jumping)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
+	}
+
 	Super::StopJumping();
 }
 
@@ -97,6 +135,11 @@ void AMaidCharacter::DoLook(float Yaw, float Pitch)
 
 void AMaidCharacter::DoStartComboAttack()
 {
+	if (CharacterState == ECharacterState::ECS_MeiDouActive || CharacterState == ECharacterState::ECS_Recovering)
+	{
+		return;
+	}
+
 	// only attack if we are not in the air, at least for now
 	if (!GetCharacterMovement()->IsFalling())
 	{
@@ -168,31 +211,114 @@ void AMaidCharacter::RecoveryEnd_Implementation()
 
 void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	CharacterState = ECharacterState::ECS_Idle;
+	if (CharacterState != ECharacterState::ECS_MeiDouActive)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
+	}
+
 	ComboCount = 0;
 	CachedAttackInputTime = 0.f;
 }
 
 void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 {
-	if (!MeiDouComponent) return;
-
-	if (UMeiDouPoseDataAsset* Pose = MeiDouPoseDataMap[Input])
+	if (!MeiDouComponent)
 	{
-		MeiDouComponent->RegisterInput(Input);
+		return;
+	}
 
-		const int32 InputCount = MeiDouComponent->GetInputCount(Input);
-		
-		PlayAnimMontage(
-			InputCount % 2 == 0 ? Pose->MirroredMontage : Pose->Montage,
-			Pose->PlayRate,
-			FName("Pose")
-		);
+	if (CharacterState != ECharacterState::ECS_Idle &&
+		CharacterState != ECharacterState::ECS_MeiDouActive)
+	{
+		return;
+	}
+
+	MeiDouComponent->RegisterInput(Input);
+}
+
+void AMaidCharacter::HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimationRequest& Request)
+{
+	if (!MeiDouComponent)
+	{
+		return;
+	}
+
+	const UMeiDouPoseDataAsset* Pose = MeiDouPoseDataMap.FindRef(Request.Input);
+	if (!Pose)
+	{
+		MeiDouComponent->OnRequestedAnimationFailed();
+		return;
+	}
+
+	SetMeiDouMirrorFlag(GetMesh(), Request.bUseMirroredMontage);
+
+	UAnimMontage* PoseMontage = Pose->Montage;
+	if (!PoseMontage)
+	{
+		MeiDouComponent->OnRequestedAnimationFailed();
+		return;
+	}
+
+	const float MontageLength = PlayAnimMontage(PoseMontage, Pose->PlayRate, MeiDouPoseSectionName);
+	if (MontageLength <= 0.f)
+	{
+		MeiDouComponent->OnRequestedAnimationFailed();
 	}
 }
 
 void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result)
 {
+	if (!MeiDouComponent)
+	{
+		return;
+	}
+
+	SetMeiDouMirrorFlag(GetMesh(), false);
+
+	if (const FMeiDouComboDefinition* ComboDefinition = MeiDouComponent->GetActiveComboDefinition())
+	{
+		if (ComboDefinition->AnimationMontage)
+		{
+			// Result montages are played from their default start, unlike pose inputs that always use "Pose" section.
+			const float MontageLength = PlayAnimMontage(ComboDefinition->AnimationMontage, 1.f);
+			if (MontageLength <= 0.f)
+			{
+				UE_LOG(
+					LogTemp,
+					Warning,
+					TEXT("Could not play MeiDou result montage for combo '%s'. Check montage slot setup."),
+					*ComboDefinition->ComboId.ToString()
+				);
+				if (GEngine)
+				{
+					const FString FailMessage = FString::Printf(
+						TEXT("MeiDou result montage failed: %s"),
+						*GetNameSafe(ComboDefinition->AnimationMontage)
+					);
+					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, FailMessage);
+				}
+				MeiDouComponent->OnRequestedAnimationFailed();
+			}
+		}
+		else
+		{
+			MeiDouComponent->OnRequestedAnimationFailed();
+		}
+	}
+	else
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				2.0f,
+				FColor::Red,
+				TEXT("MeiDou Combo Resolved but no active definition")
+			);
+		}
+		MeiDouComponent->OnRequestedAnimationFailed();
+	}
+
 	if (!GEngine)
 	{
 		return;
@@ -209,4 +335,24 @@ void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Resul
 		FColor::Green,
 		Message
 	);
+}
+
+void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
+{
+	if (!bIsLocked)
+	{
+		SetMeiDouMirrorFlag(GetMesh(), false);
+
+		if (CharacterState == ECharacterState::ECS_MeiDouActive)
+		{
+			CharacterState = ECharacterState::ECS_Idle;
+		}
+		return;
+	}
+
+	CharacterState = ECharacterState::ECS_MeiDouActive;
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+	}
 }

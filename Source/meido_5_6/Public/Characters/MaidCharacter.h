@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ActorComponents/MeiDouComponent.h"
 #include "MeiDouPoseDataAsset.h"
 #include "GameFramework/Character.h"
 #include "Types/CharacterTypes.h"
@@ -9,7 +10,6 @@
 #include "MaidCharacter.generated.h"
 
 class UAttackComponent;
-class UMeiDouComponent;
 class ULockOnComponent;
 class UAnimMontage;
 
@@ -71,13 +71,19 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
 	UMeiDouComponent* MeiDouComponent;
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MeiDou")
 	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
 
 	void RegisterMeiDouInput(EMeiDouInput Input);
 
 	UFUNCTION()
+	void HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimationRequest& Request);
+
+	UFUNCTION()
 	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
+
+	UFUNCTION()
+	void HandleMeiDouControlLockChanged(bool bIsLocked);
 
 	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;

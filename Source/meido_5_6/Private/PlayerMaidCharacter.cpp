@@ -136,6 +136,12 @@ void APlayerMaidCharacter::OnLockOnSwitch(const FInputActionValue& Value)
 	LockOnComponent->HandleSwitchInput(Axis);
 }
 
+void APlayerMaidCharacter::OnLockOnSwitchReleased(const FInputActionValue& Value)
+{
+	if (!LockOnComponent) return;
+	LockOnComponent->HandleSwitchReleased();
+}
+
 void APlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
 {
 	FVector TargetLocation;
@@ -193,5 +199,7 @@ void APlayerMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 		                                   &APlayerMaidCharacter::ToggleLockOn);
 		EnhancedInputComponent->BindAction(ChangeLockOnInputAction, ETriggerEvent::Started, this,
 		                                   &APlayerMaidCharacter::OnLockOnSwitch);
+		EnhancedInputComponent->BindAction(ChangeLockOnInputAction, ETriggerEvent::Completed, this,
+		                                   &APlayerMaidCharacter::OnLockOnSwitchReleased);
 	}
 }

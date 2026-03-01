@@ -31,6 +31,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void HandleSwitchInput(float AxisValue);
+
+	UFUNCTION(BlueprintCallable)
+	void HandleSwitchReleased();
 	void SwitchTarget(int32 Direction);
 
 protected:

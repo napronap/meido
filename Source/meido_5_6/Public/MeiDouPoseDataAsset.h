@@ -27,10 +27,7 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UAnimMontage* Montage;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	UAnimMontage* MirroredMontage;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float PlayRate = 1.5f;
 };

@@ -17,4 +17,7 @@ class MEIDO_5_6_API UMaidAnimInstance : public UAnimInstance
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Maid")
 	bool bShouldMirror = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="Maid|Movement")
+	bool bIsLockedOn = false;
 };

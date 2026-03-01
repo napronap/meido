@@ -71,6 +71,8 @@ protected:
 	void ToggleLockOn();
 	void OnLockOnSwitch(const FInputActionValue& Value);
 	void OnLockOnSwitchReleased(const FInputActionValue& Value);
+	void ApplyLockOnMovementMode(bool bLockOnActive);
+	void UpdateAnimLockOnState(bool bLockOnActive);
 
 	/*
 	 * Camera
@@ -82,4 +84,6 @@ protected:
 	UCameraComponent* ViewCamera;
 
 	void RotateCameraToTarget(AActor* Target, float DeltaTime);
+
+	bool bWasLockOnActive = false;
 };

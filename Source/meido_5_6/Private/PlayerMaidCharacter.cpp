@@ -5,6 +5,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "ActorComponents/LockOnComponent.h"
+#include "AnimInstances/MaidAnimInstance.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -35,7 +36,11 @@ void APlayerMaidCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (LockOnComponent && LockOnComponent->IsLockedOn())
+	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
+	UpdateAnimLockOnState(bLockOnActive);
+	ApplyLockOnMovementMode(bLockOnActive);
+
+	if (bLockOnActive)
 	{
 		AActor* Target = LockOnComponent->GetCurrentTarget();
 		if (Target)
@@ -102,6 +107,8 @@ void APlayerMaidCharacter::ToggleLockOn()
 	if (LockOnComponent->IsLockedOn())
 	{
 		LockOnComponent->ClearLockOn();
+		UpdateAnimLockOnState(false);
+		ApplyLockOnMovementMode(false);
 		GEngine->AddOnScreenDebugMessage(
 			-1, 1.5f, FColor::Yellow, TEXT("Lock on cleared")
 		);
@@ -109,6 +116,8 @@ void APlayerMaidCharacter::ToggleLockOn()
 	else
 	{
 		const bool bLocked = LockOnComponent->TryLockOn();
+		UpdateAnimLockOnState(bLocked);
+		ApplyLockOnMovementMode(bLocked);
 
 		if (bLocked && GEngine)
 		{
@@ -140,6 +149,40 @@ void APlayerMaidCharacter::OnLockOnSwitchReleased(const FInputActionValue& Value
 {
 	if (!LockOnComponent) return;
 	LockOnComponent->HandleSwitchReleased();
+}
+
+void APlayerMaidCharacter::ApplyLockOnMovementMode(bool bLockOnActive)
+{
+	if (bWasLockOnActive == bLockOnActive)
+	{
+		return;
+	}
+
+	bWasLockOnActive = bLockOnActive;
+
+	if (bLockOnActive)
+	{
+		bUseControllerRotationYaw = true;
+		GetCharacterMovement()->bOrientRotationToMovement = false;
+	}
+	else
+	{
+		bUseControllerRotationYaw = false;
+		GetCharacterMovement()->bOrientRotationToMovement = true;
+	}
+}
+
+void APlayerMaidCharacter::UpdateAnimLockOnState(bool bLockOnActive)
+{
+	if (!GetMesh())
+	{
+		return;
+	}
+
+	if (UMaidAnimInstance* MaidAnimInstance = Cast<UMaidAnimInstance>(GetMesh()->GetAnimInstance()))
+	{
+		MaidAnimInstance->bIsLockedOn = bLockOnActive;
+	}
 }
 
 void APlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)

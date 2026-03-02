@@ -70,6 +70,9 @@ protected:
 	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
+	FOnMontageEnded OnDamageMontageEnded;
+	void DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
 	/*
 	 * mei dou
 	 */
@@ -115,6 +118,18 @@ protected:
 	void HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser);
 
 	int32 NextDamageSectionIndex = 0;
+
+	/*
+	 * death
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Death")
+	UAnimMontage* DeathMontage = nullptr;
+
+	// If > 0, actor will auto-destroy this many seconds after death.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Death", meta=(ClampMin="0.0", UIMin="0.0"))
+	float DeathLifeSpanSeconds = 6.f;
+
+	bool bHasDied = false;
 
 	/*
 	 * lock on

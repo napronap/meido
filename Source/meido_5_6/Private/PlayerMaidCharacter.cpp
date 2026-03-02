@@ -66,7 +66,13 @@ void APlayerMaidCharacter::Move(const FInputActionValue& Value)
 void APlayerMaidCharacter::Look(const FInputActionValue& Value)
 {
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
-	DoLook(LookAxisVector.X, LookAxisVector.Y);
+
+	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
+
+	// While lock-on is active we keep yaw camera control driven by target tracking.
+	// Player can still adjust pitch manually.
+	const float YawInput = bLockOnActive ? 0.f : LookAxisVector.X;
+	DoLook(YawInput, LookAxisVector.Y);
 }
 
 void APlayerMaidCharacter::JumpPressed()
@@ -187,6 +193,11 @@ void APlayerMaidCharacter::UpdateAnimLockOnState(bool bLockOnActive)
 
 void APlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
 {
+	if (!Controller || !ViewCamera)
+	{
+		return;
+	}
+
 	FVector TargetLocation;
 
 	if (Target->Implements<UTargetable>())
@@ -205,10 +216,17 @@ void APlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
 	FRotator DesiredRotation = Direction.Rotation();
 
 	FRotator CurrentRotation = Controller->GetControlRotation();
-	FRotator NewRotation(
+	const FRotator DesiredControlRotation(
 		CurrentRotation.Pitch,
 		DesiredRotation.Yaw,
 		CurrentRotation.Roll
+	);
+
+	const FRotator NewRotation = FMath::RInterpTo(
+		CurrentRotation,
+		DesiredControlRotation,
+		DeltaTime,
+		LockOnCameraYawInterpSpeed
 	);
 
 	Controller->SetControlRotation(NewRotation);

@@ -86,4 +86,8 @@ protected:
 	void RotateCameraToTarget(AActor* Target, float DeltaTime);
 
 	bool bWasLockOnActive = false;
+
+	// How fast lock-on camera yaw follows target. Lower = smoother/slower.
+	UPROPERTY(EditAnywhere, Category="Camera|LockOn", meta=(ClampMin="0.1", ClampMax="30.0"))
+	float LockOnCameraYawInterpSpeed = 8.f;
 };

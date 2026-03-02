@@ -2,21 +2,26 @@
 
 
 #include "Characters/EnemyMaid.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "ActorComponents/HealthComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 
-AEnemyMaid::AEnemyMaid()
+FVector AEnemyMaid::GetTargetLocation_Implementation()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	if (USkeletalMeshComponent* MeshComponent = GetMesh())
+	{
+		return MeshComponent->Bounds.Origin;
+	}
+
+	return GetActorLocation();
 }
 
-void AEnemyMaid::BeginPlay()
+bool AEnemyMaid::CanBeTargeted_Implementation() const
 {
-	Super::BeginPlay();
-
-	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	if (HealthComponent && HealthComponent->IsDead())
 	{
-		MovementComponent->StopMovementImmediately();
-		MovementComponent->DisableMovement();
+		return false;
 	}
+
+	return true;
 }
 

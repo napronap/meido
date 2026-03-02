@@ -4,19 +4,18 @@
 
 #include "CoreMinimal.h"
 #include "Characters/MaidCharacter.h"
+#include "Interfaces/Targetable.h"
 #include "EnemyMaid.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class MEIDO_5_6_API AEnemyMaid : public AMaidCharacter
+class MEIDO_5_6_API AEnemyMaid : public AMaidCharacter, public ITargetable
 {
 	GENERATED_BODY()
 
 public:
-	AEnemyMaid();
-
-protected:
-	virtual void BeginPlay() override;
+	virtual FVector GetTargetLocation_Implementation() override;
+	virtual bool CanBeTargeted_Implementation() const override;
 };

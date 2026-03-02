@@ -8,6 +8,7 @@
 #include "ActorComponents/LockOnComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
+#include "Animation/AnimInstance.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
 
@@ -43,6 +44,7 @@ AMaidCharacter::AMaidCharacter()
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 400.f, 0.f);
 
 	OnAttackMontageEnded.BindUObject(this, &AMaidCharacter::AttackMontageEnded);
+	OnDamageMontageEnded.BindUObject(this, &AMaidCharacter::DamageMontageEnded);
 }
 
 // Called when the game starts or when spawned
@@ -219,13 +221,47 @@ void AMaidCharacter::RecoveryEnd_Implementation()
 
 void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (CharacterState != ECharacterState::ECS_MeiDouActive)
+	if (bHasDied)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		return;
 	}
 
 	ComboCount = 0;
 	CachedAttackInputTime = 0.f;
+
+	if (CharacterState == ECharacterState::ECS_MeiDouActive)
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+	{
+		if (DamageMontage && AnimInstance->Montage_IsPlaying(DamageMontage))
+		{
+			CharacterState = ECharacterState::ECS_Recovering;
+			return;
+		}
+	}
+
+	CharacterState = ECharacterState::ECS_Idle;
+}
+
+void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (bHasDied)
+	{
+		return;
+	}
+
+	if (HealthComponent && HealthComponent->IsDead())
+	{
+		return;
+	}
+
+	if (CharacterState != ECharacterState::ECS_MeiDouActive)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
+	}
 }
 
 void AMaidCharacter::HandleDamageTaken(
@@ -241,33 +277,82 @@ void AMaidCharacter::HandleDamageTaken(
 		return;
 	}
 
-	if (DamageSectionNames.Num() > 0)
+	if (AttackComponent)
 	{
-		const int32 SafeIndex = FMath::Abs(NextDamageSectionIndex) % DamageSectionNames.Num();
-		const FName SectionToPlay = DamageSectionNames[SafeIndex];
+		AttackComponent->CloseHitWindow();
+	}
 
-		const float MontageLength = PlayAnimMontage(DamageMontage, 1.f, SectionToPlay);
-		if (MontageLength <= 0.f)
-		{
-			// If a configured section is missing, still play the montage from start.
-			PlayAnimMontage(DamageMontage);
-		}
-
-		NextDamageSectionIndex = (SafeIndex + 1) % DamageSectionNames.Num();
+	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	if (!AnimInstance)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
 		return;
 	}
 
-	PlayAnimMontage(DamageMontage);
+	// Damage reactions should interrupt any ongoing action montage.
+	AnimInstance->Montage_Stop(0.05f);
+
+	CharacterState = ECharacterState::ECS_Recovering;
+
+	FName SectionToPlay = NAME_None;
+	if (DamageSectionNames.Num() > 0)
+	{
+		const int32 SafeIndex = FMath::Abs(NextDamageSectionIndex) % DamageSectionNames.Num();
+		SectionToPlay = DamageSectionNames[SafeIndex];
+		NextDamageSectionIndex = (SafeIndex + 1) % DamageSectionNames.Num();
+	}
+
+	const float MontageLength = PlayAnimMontage(DamageMontage, 1.f, SectionToPlay);
+	if (MontageLength > 0.f)
+	{
+		AnimInstance->Montage_SetEndDelegate(OnDamageMontageEnded, DamageMontage);
+		return;
+	}
+
+	// Fallback: if a section name is invalid/missing, play montage from its default start.
+	const float FallbackLength = PlayAnimMontage(DamageMontage, 1.f);
+	if (FallbackLength > 0.f)
+	{
+		AnimInstance->Montage_SetEndDelegate(OnDamageMontageEnded, DamageMontage);
+		return;
+	}
+
+	CharacterState = ECharacterState::ECS_Idle;
 }
 
 void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser)
 {
+	if (bHasDied)
+	{
+		return;
+	}
+	bHasDied = true;
+
+	if (AttackComponent)
+	{
+		AttackComponent->CloseHitWindow();
+	}
+
 	CharacterState = ECharacterState::ECS_Recovering;
+
+	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+	{
+		AnimInstance->Montage_Stop(0.05f);
+		if (DeathMontage)
+		{
+			PlayAnimMontage(DeathMontage);
+		}
+	}
 
 	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
 		MovementComponent->StopMovementImmediately();
 		MovementComponent->DisableMovement();
+	}
+
+	if (DeathLifeSpanSeconds > 0.f)
+	{
+		SetLifeSpan(DeathLifeSpanSeconds);
 	}
 }
 

@@ -147,11 +147,16 @@ void ULockOnComponent::ClearLockOn()
 
 bool ULockOnComponent::IsLockedOn()
 {
-	return CurrentTarget != nullptr;
+	return RefreshCurrentTarget();
 }
 
 AActor* ULockOnComponent::GetCurrentTarget()
 {
+	if (!RefreshCurrentTarget())
+	{
+		return nullptr;
+	}
+
 	return CurrentTarget;
 }
 
@@ -190,7 +195,7 @@ void ULockOnComponent::HandleSwitchReleased()
 
 void ULockOnComponent::SwitchTarget(int32 Direction)
 {
-	if (!OwnerCharacter || !CurrentTarget)
+	if (!RefreshCurrentTarget() || !OwnerCharacter || !CurrentTarget)
 		return;
 
 	APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
@@ -286,6 +291,38 @@ void ULockOnComponent::SwitchTarget(int32 Direction)
 	}
 
 	CurrentTarget = Visible[NextIndex].Actor;
+}
+
+bool ULockOnComponent::IsTargetValidForLockOn(const AActor* Target) const
+{
+	if (!OwnerCharacter || !IsValid(Target) || Target == OwnerCharacter)
+	{
+		return false;
+	}
+
+	if (!Target->Implements<UTargetable>())
+	{
+		return false;
+	}
+
+	AActor* MutableTarget = const_cast<AActor*>(Target);
+	return IsValid(MutableTarget) && ITargetable::Execute_CanBeTargeted(MutableTarget);
+}
+
+bool ULockOnComponent::RefreshCurrentTarget()
+{
+	if (!CurrentTarget)
+	{
+		return false;
+	}
+
+	if (IsTargetValidForLockOn(CurrentTarget))
+	{
+		return true;
+	}
+
+	CurrentTarget = nullptr;
+	return TryLockOn();
 }
 
 

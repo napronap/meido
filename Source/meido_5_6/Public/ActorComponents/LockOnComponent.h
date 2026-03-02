@@ -43,6 +43,8 @@ protected:
 	void FindTargets(TArray<AActor*>& OutTargets) const;
 
 	AActor* SelectBestTarget(const TArray<AActor*>& Targets) const;
+	bool IsTargetValidForLockOn(const AActor* Target) const;
+	bool RefreshCurrentTarget();
 
 	UPROPERTY()
 	ACharacter* OwnerCharacter;

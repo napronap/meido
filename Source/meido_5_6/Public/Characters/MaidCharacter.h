@@ -10,8 +10,10 @@
 #include "MaidCharacter.generated.h"
 
 class UAttackComponent;
+class UHealthComponent;
 class ULockOnComponent;
 class UAnimMontage;
+class AController;
 
 UCLASS(Abstract)
 class MEIDO_5_6_API AMaidCharacter : public ACharacter, public IComboAttacker
@@ -56,6 +58,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	UAttackComponent* AttackComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
+	UHealthComponent* HealthComponent;
+
 	void DoStartComboAttack();
 	void DoContinueCombo();
 
@@ -87,6 +92,29 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
+
+	/*
+	 * damage
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Damage")
+	UAnimMontage* DamageMontage = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Damage")
+	TArray<FName> DamageSectionNames;
+
+	UFUNCTION()
+	void HandleDamageTaken(
+		UHealthComponent* InHealthComponent,
+		float Damage,
+		float CurrentHealth,
+		AActor* DamageCauser,
+		AController* InstigatedBy
+	);
+
+	UFUNCTION()
+	void HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser);
+
+	int32 NextDamageSectionIndex = 0;
 
 	/*
 	 * lock on

@@ -4,6 +4,7 @@
 #include "Characters/MaidCharacter.h"
 #include "Components/InputComponent.h"
 #include "ActorComponents/AttackComponent.h"
+#include "ActorComponents/HealthComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
@@ -50,8 +51,15 @@ void AMaidCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	AttackComponent = FindComponentByClass<UAttackComponent>();
+	HealthComponent = FindComponentByClass<UHealthComponent>();
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
 	LockOnComponent = FindComponentByClass<ULockOnComponent>();
+
+	if (HealthComponent)
+	{
+		HealthComponent->OnDamageTaken.AddDynamic(this, &AMaidCharacter::HandleDamageTaken);
+		HealthComponent->OnHealthDepleted.AddDynamic(this, &AMaidCharacter::HandleHealthDepleted);
+	}
 
 	if (MeiDouComponent)
 	{
@@ -218,6 +226,49 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 
 	ComboCount = 0;
 	CachedAttackInputTime = 0.f;
+}
+
+void AMaidCharacter::HandleDamageTaken(
+	UHealthComponent* InHealthComponent,
+	float Damage,
+	float CurrentHealth,
+	AActor* DamageCauser,
+	AController* InstigatedBy
+)
+{
+	if (!DamageMontage)
+	{
+		return;
+	}
+
+	if (DamageSectionNames.Num() > 0)
+	{
+		const int32 SafeIndex = FMath::Abs(NextDamageSectionIndex) % DamageSectionNames.Num();
+		const FName SectionToPlay = DamageSectionNames[SafeIndex];
+
+		const float MontageLength = PlayAnimMontage(DamageMontage, 1.f, SectionToPlay);
+		if (MontageLength <= 0.f)
+		{
+			// If a configured section is missing, still play the montage from start.
+			PlayAnimMontage(DamageMontage);
+		}
+
+		NextDamageSectionIndex = (SafeIndex + 1) % DamageSectionNames.Num();
+		return;
+	}
+
+	PlayAnimMontage(DamageMontage);
+}
+
+void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser)
+{
+	CharacterState = ECharacterState::ECS_Recovering;
+
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+		MovementComponent->DisableMovement();
+	}
 }
 
 void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)

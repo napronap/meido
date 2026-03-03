@@ -54,6 +54,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	bool, bIsLocked
 );
 
+// TODO: maybe end the montage early
+// DECLARE_DELEGATE(
+// 	FOnMeiDouActiveStateEnded
+// );
+
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class MEIDO_5_6_API UMeiDouComponent : public UActorComponent
@@ -99,7 +104,7 @@ public:
 
 	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouControlLockChanged OnMeiDouControlLockChanged;
-
+	
 	UPROPERTY(EditDefaultsOnly)
 	UMeiDouComboData* ComboData;
 	

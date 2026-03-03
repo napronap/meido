@@ -2,6 +2,7 @@
 
 
 #include "ActorComponents/MeiDouComponent.h"
+#include "ActorComponents/AttackComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Engine.h"
@@ -89,6 +90,15 @@ void UMeiDouComponent::OnMeiDouActionWindowBegin()
 void UMeiDouComponent::OnMeiDouActionWindowEnd()
 {
 	OnMeiDouControlLockChanged.Broadcast(false);
+
+	if (AActor* OwnerActor = GetOwner())
+	{
+		if (UAttackComponent* AttackComponent = OwnerActor->FindComponentByClass<UAttackComponent>())
+		{
+			AttackComponent->CloseHitWindow();
+		}
+	}
+
 	CleanupSpawnedResultActor();
 
 	if (MeiDouState == EMeiDouState::EMDS_Finished)
@@ -103,6 +113,15 @@ void UMeiDouComponent::OnMeiDouActionWindowEnd()
 void UMeiDouComponent::OnRequestedAnimationFailed()
 {
 	OnMeiDouControlLockChanged.Broadcast(false);
+
+	if (AActor* OwnerActor = GetOwner())
+	{
+		if (UAttackComponent* AttackComponent = OwnerActor->FindComponentByClass<UAttackComponent>())
+		{
+			AttackComponent->CloseHitWindow();
+		}
+	}
+
 	CleanupSpawnedResultActor();
 
 	if (MeiDouState == EMeiDouState::EMDS_Finished)
@@ -122,6 +141,11 @@ void UMeiDouComponent::ResetCombo()
 
 void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 {
+	AActor* OwnerActor = GetOwner();
+	UAttackComponent* AttackComponent = OwnerActor
+		? OwnerActor->FindComponentByClass<UAttackComponent>()
+		: nullptr;
+
 	switch (EventKey)
 	{
 	case EMeiDouAnimEvent::EMDAE_Spawn:
@@ -145,8 +169,49 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 		break;
 	case EMeiDouAnimEvent::EMDAE_ControlEnable:
 	case EMeiDouAnimEvent::EMDAE_ControlDisable:
+		break;
 	case EMeiDouAnimEvent::EMDAE_TraceStart:
+	{
+		if (!HasActiveComboDefinition() || ActiveComboDefinition.ResultType != EMeiDouResultType::EMDRT_Damage)
+		{
+			break;
+		}
+
+		if (!AttackComponent)
+		{
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("MeiDou TraceStart ignored: missing AttackComponent"));
+			}
+			break;
+		}
+
+		AttackComponent->StartAttack(EHitStopType::Heavy);
+
+		TArray<FName> DamageSockets = ActiveComboDefinition.DamageConfig.SocketNames;
+		if (DamageSockets.Num() <= 0 && ActiveComboDefinition.DamageConfig.SocketName != NAME_None)
+		{
+			DamageSockets.Add(ActiveComboDefinition.DamageConfig.SocketName);
+		}
+
+		AttackComponent->OpenHitWindowSockets(DamageSockets);
+		break;
+	}
 	case EMeiDouAnimEvent::EMDAE_TraceEnd:
+	{
+		if (!AttackComponent)
+		{
+			break;
+		}
+
+		if (!HasActiveComboDefinition() || ActiveComboDefinition.ResultType != EMeiDouResultType::EMDRT_Damage)
+		{
+			break;
+		}
+
+		AttackComponent->CloseHitWindow();
+		break;
+	}
 	default:
 		break;
 	}

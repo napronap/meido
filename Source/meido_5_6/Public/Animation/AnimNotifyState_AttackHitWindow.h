@@ -28,6 +28,11 @@ public:
 		const FAnimNotifyEventReference& EventReference
 	) override;
 
-	UPROPERTY(EditAnywhere)
+	// Legacy single-socket entry. Used when HitSocketNames is empty.
+	UPROPERTY(EditAnywhere, Category="Hit")
 	FName HitSocketName = "Attack_Hand_R";
+
+	// Optional multi-socket setup for a wider/multi-point hit window.
+	UPROPERTY(EditAnywhere, Category="Hit")
+	TArray<FName> HitSocketNames;
 };

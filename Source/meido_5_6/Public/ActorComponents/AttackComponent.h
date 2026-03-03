@@ -29,6 +29,9 @@ public:
 	void OpenHitWindow(FName InSocket);
 
 	UFUNCTION(BlueprintCallable)
+	void OpenHitWindowSockets(const TArray<FName>& InSockets);
+
+	UFUNCTION(BlueprintCallable)
 	void CloseHitWindow();
 
 protected:
@@ -40,8 +43,6 @@ protected:
 	void ApplyLocalHitStop(AActor* TargetActor, EHitStopType HitStopType);
 	void RestoreLocalTimeDilation(AActor* TargetActor);
 	float GetHitStopDuration(EHitStopType HitStopType) const;
-	void ApplyHitKnockback(AActor* HitActor, EHitStopType HitStopType) const;
-	float GetKnockbackStrength(EHitStopType HitStopType) const;
 
 	UPROPERTY()
 	ACharacter* OwnerCharacter;
@@ -67,21 +68,6 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Attack|HitStop", meta=(ClampMin="0.0", ClampMax="0.3"))
 	float HeavyHitStopDuration = 0.08f;
 
-	UPROPERTY(EditAnywhere, Category="Attack|Knockback")
-	bool bEnableKnockback = true;
-
-	UPROPERTY(EditAnywhere, Category="Attack|Knockback", meta=(ClampMin="0.0", ClampMax="1000.0"))
-	float LightKnockbackStrength = 120.f;
-
-	UPROPERTY(EditAnywhere, Category="Attack|Knockback", meta=(ClampMin="0.0", ClampMax="1500.0"))
-	float HeavyKnockbackStrength = 220.f;
-
-	UPROPERTY(EditAnywhere, Category="Attack|Knockback", meta=(ClampMin="0.0", ClampMax="500.0"))
-	float KnockbackUpwardStrength = 20.f;
-
-	UPROPERTY(EditAnywhere, Category="Attack|Knockback")
-	bool bRotateTargetTowardAttackerOnHit = true;
-
 	bool bIsAttacking = false;
 	bool bHitWindowOpen = false;
 	EHitStopType CurrentHitStopType = EHitStopType::Light;
@@ -89,7 +75,7 @@ protected:
 	TSet<AActor*> HitActorsThisAttack;
 	TMap<TWeakObjectPtr<AActor>, FTimerHandle> ActiveHitStopTimers;
 	
-	FName CurrentHitSocket;
+	TArray<FName> CurrentHitSockets;
 
 public:	
 	// Called every frame

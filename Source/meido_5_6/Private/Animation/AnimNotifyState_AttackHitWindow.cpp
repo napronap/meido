@@ -23,7 +23,14 @@ void UAnimNotifyState_AttackHitWindow::NotifyBegin(
 
 	if (AttackComponent)
 	{
-		AttackComponent->OpenHitWindow(HitSocketName);
+		if (HitSocketNames.Num() > 0)
+		{
+			AttackComponent->OpenHitWindowSockets(HitSocketNames);
+		}
+		else
+		{
+			AttackComponent->OpenHitWindow(HitSocketName);
+		}
 	}
 }
 

@@ -14,20 +14,20 @@
 
 namespace
 {
-const FName MeiDouPoseSectionName(TEXT("Pose"));
+	const FName MeiDouPoseSectionName(TEXT("Pose"));
 
-void SetMeiDouMirrorFlag(USkeletalMeshComponent* Mesh, bool bShouldMirror)
-{
-	if (!Mesh)
+	void SetMeiDouMirrorFlag(USkeletalMeshComponent* Mesh, bool bShouldMirror)
 	{
-		return;
-	}
+		if (!Mesh)
+		{
+			return;
+		}
 
-	if (UMaidAnimInstance* MaidAnimInstance = Cast<UMaidAnimInstance>(Mesh->GetAnimInstance()))
-	{
-		MaidAnimInstance->bShouldMirror = bShouldMirror;
+		if (UMaidAnimInstance* MaidAnimInstance = Cast<UMaidAnimInstance>(Mesh->GetAnimInstance()))
+		{
+			MaidAnimInstance->bShouldMirror = bShouldMirror;
+		}
 	}
-}
 }
 
 // Sets default values
@@ -363,8 +363,9 @@ void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 		return;
 	}
 
-	if (CharacterState != ECharacterState::ECS_Idle &&
-		CharacterState != ECharacterState::ECS_MeiDouActive)
+	if ((CharacterState != ECharacterState::ECS_Idle &&
+		CharacterState != ECharacterState::ECS_MeiDouActive) ||
+		GetCharacterMovement()->IsFalling())
 	{
 		return;
 	}

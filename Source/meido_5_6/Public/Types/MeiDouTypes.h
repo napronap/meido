@@ -97,8 +97,13 @@ struct FMeiDouDamageConfig
 {
 	GENERATED_BODY()
 
+	// Legacy single-socket entry. Still supported as fallback when SocketNames is empty.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FName SocketName = NAME_None;
+
+	// Preferred setup: evaluate hit traces from all these sockets during MeiDou damage windows.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TArray<FName> SocketNames;
 };
 
 // key for the value of the combo

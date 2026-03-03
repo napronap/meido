@@ -2,26 +2,22 @@
 
 
 #include "MeiDouResults/OmuriceBomb.h"
-#include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "GameFramework/DamageType.h"
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystem.h"
 #include "Sound/SoundBase.h"
+#include "Utils/CombatFeedbackLibrary.h"
 
 AOmuriceBomb::AOmuriceBomb()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-	SetRootComponent(SceneRoot);
-
 	BombMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BombMesh"));
-	BombMesh->SetupAttachment(SceneRoot);
-	BombMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	BombMesh->SetCollisionObjectType(ECC_WorldDynamic);
-	BombMesh->SetCollisionResponseToAllChannels(ECR_Block);
+	SetRootComponent(BombMesh);
+	// Movement/impact detection is trace-driven (see Tick), so mesh collision is disabled.
+	BombMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BombMesh->SetGenerateOverlapEvents(false);
 }
 
@@ -45,14 +41,43 @@ void AOmuriceBomb::Tick(float DeltaTime)
 		return;
 	}
 
-	FHitResult Hit;
-	const FVector FallStep(0.f, 0.f, -FallSpeed * DeltaTime);
-	AddActorWorldOffset(FallStep, true, &Hit);
-
-	if (Hit.bBlockingHit)
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		HandleImpact();
+		return;
 	}
+
+	const FVector Start = GetActorLocation();
+	const FVector FallStep(0.f, 0.f, -FallSpeed * DeltaTime);
+	const FVector End = Start + FallStep;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(OmuriceBombFallTrace), false, this);
+	QueryParams.AddIgnoredActor(this);
+	if (AActor* OwnerActor = GetOwner())
+	{
+		QueryParams.AddIgnoredActor(OwnerActor);
+	}
+	
+	// Ground-only detection: bomb passes through pawns and only impacts valid ground.
+	FHitResult GroundHit;
+	const bool bHitGround = World->LineTraceSingleByChannel(
+		GroundHit,
+		Start,
+		End,
+		GroundTraceChannel,
+		QueryParams
+	);
+
+	if (bHitGround && GroundHit.ImpactNormal.Z >= GroundImpactMinNormalZ)
+	{
+		const FVector GroundOffset = GroundHit.ImpactNormal * 2.f;
+		SetActorLocation(GroundHit.ImpactPoint + GroundOffset, false);
+		HandleImpact();
+		return;
+	}
+
+	// No valid impact this frame, keep falling.
+	SetActorLocation(End, false);
 }
 
 void AOmuriceBomb::HandleImpact()
@@ -68,6 +93,10 @@ void AOmuriceBomb::HandleImpact()
 	{
 		TArray<AActor*> IgnoredActors;
 		IgnoredActors.Add(this);
+		if (AActor* OwnerActor = GetOwner())
+		{
+			IgnoredActors.Add(OwnerActor);
+		}
 
 		UGameplayStatics::ApplyRadialDamage(
 			World,
@@ -78,8 +107,61 @@ void AOmuriceBomb::HandleImpact()
 			IgnoredActors,
 			this,
 			GetInstigatorController(),
-			true
+			true,
+			ECC_MAX
 		);
+
+		if (bApplyImpactHitStop)
+		{
+			if (AActor* OwnerActor = GetOwner(); OwnerActor && bApplyImpactHitStopToOwner)
+			{
+				UCombatFeedbackLibrary::ApplyLocalHitStop(
+					this,
+					OwnerActor,
+					ImpactHitStopDuration,
+					ImpactHitStopTimeDilation
+				);
+			}
+
+			TArray<FOverlapResult> OverlapResults;
+			FCollisionObjectQueryParams ObjectQueryParams;
+			ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+
+			FCollisionQueryParams OverlapQueryParams(SCENE_QUERY_STAT(OmuriceBombHitStopOverlap), false, this);
+			OverlapQueryParams.AddIgnoredActor(this);
+			if (AActor* OwnerActor = GetOwner())
+			{
+				OverlapQueryParams.AddIgnoredActor(OwnerActor);
+			}
+
+			if (World->OverlapMultiByObjectType(
+				OverlapResults,
+				GetActorLocation(),
+				FQuat::Identity,
+				ObjectQueryParams,
+				FCollisionShape::MakeSphere(ImpactRadius),
+				OverlapQueryParams
+			))
+			{
+				TSet<AActor*> ProcessedActors;
+				for (const FOverlapResult& Overlap : OverlapResults)
+				{
+					AActor* HitActor = Overlap.GetActor();
+					if (!HitActor || ProcessedActors.Contains(HitActor))
+					{
+						continue;
+					}
+
+					ProcessedActors.Add(HitActor);
+					UCombatFeedbackLibrary::ApplyLocalHitStop(
+						this,
+						HitActor,
+						ImpactHitStopDuration,
+						ImpactHitStopTimeDilation
+					);
+				}
+			}
+		}
 
 		if (ImpactVFX)
 		{
@@ -106,6 +188,5 @@ void AOmuriceBomb::HandleImpact()
 	}
 
 	SetActorEnableCollision(false);
-	SetActorHiddenInGame(true);
 	SetLifeSpan(DestroyDelay);
 }

@@ -2,6 +2,7 @@
 
 
 #include "ActorComponents/AttackComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
 #include "Kismet/GameplayStatics.h"
@@ -25,6 +26,11 @@ void UAttackComponent::BeginPlay()
 	Super::BeginPlay();
 
 	OwnerCharacter = Cast<ACharacter>(GetOwner());
+	CurrentHitSockets.Reset();
+	if (HitSocketName != NAME_None)
+	{
+		CurrentHitSockets.Add(HitSocketName);
+	}
 }
 
 void UAttackComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -53,7 +59,33 @@ void UAttackComponent::StartAttack(EHitStopType InHitStopType)
 
 void UAttackComponent::OpenHitWindow(FName InSocket)
 {
-	CurrentHitSocket = InSocket;
+	TArray<FName> Sockets;
+	if (InSocket != NAME_None)
+	{
+		Sockets.Add(InSocket);
+	}
+
+	OpenHitWindowSockets(Sockets);
+}
+
+void UAttackComponent::OpenHitWindowSockets(const TArray<FName>& InSockets)
+{
+	CurrentHitSockets.Reset();
+	for (const FName SocketName : InSockets)
+	{
+		if (SocketName == NAME_None || CurrentHitSockets.Contains(SocketName))
+		{
+			continue;
+		}
+
+		CurrentHitSockets.Add(SocketName);
+	}
+
+	if (CurrentHitSockets.Num() <= 0 && HitSocketName != NAME_None)
+	{
+		CurrentHitSockets.Add(HitSocketName);
+	}
+
 	// Allow each hit window (each swing/section) to damage targets once.
 	HitActorsThisAttack.Reset();
 	bHitWindowOpen = true;
@@ -69,55 +101,63 @@ void UAttackComponent::PerformHitTrace()
 {
 	if (!OwnerCharacter) return;
 
-	const FVector Start = OwnerCharacter->GetMesh()->GetSocketLocation(CurrentHitSocket);
-
-	const FVector End = Start + OwnerCharacter->GetActorForwardVector() * TraceDistance;
+	USkeletalMeshComponent* OwnerMesh = OwnerCharacter->GetMesh();
+	if (!OwnerMesh || CurrentHitSockets.Num() <= 0)
+	{
+		return;
+	}
 
 	FCollisionShape Box = FCollisionShape::MakeBox(BoxExtent);
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(AttackTrace), false, OwnerCharacter);
 	QueryParams.AddIgnoredActor(OwnerCharacter);
 
-	FHitResult Hit;
-
-	bool bHit = GetWorld()->SweepSingleByChannel(
-		Hit,
-		Start,
-		End,
-		FQuat::Identity,
-		ECC_Pawn,
-		Box,
-		QueryParams
-	);
-
-	DrawDebugBox(
-		GetWorld(),
-		(Start + End) * .5f,
-		BoxExtent,
-		FColor::Red,
-		false,
-		.1f
-	);
-
-	if (bHit && Hit.GetActor())
+	for (const FName SocketName : CurrentHitSockets)
 	{
-		if (!HitActorsThisAttack.Contains(Hit.GetActor()))
+		if (SocketName == NAME_None || !OwnerMesh->DoesSocketExist(SocketName))
 		{
-			AActor* HitActor = Hit.GetActor();
-
-			UGameplayStatics::ApplyDamage(
-				HitActor,
-				Damage,
-				OwnerCharacter->GetController(),
-				OwnerCharacter,
-				nullptr
-			);
-
-			ApplyHitKnockback(HitActor, CurrentHitStopType);
-			ApplyLocalHitStop(OwnerCharacter, CurrentHitStopType);
-			ApplyLocalHitStop(HitActor, CurrentHitStopType);
-
-			HitActorsThisAttack.Add(HitActor);
+			continue;
 		}
+
+		const FVector Start = OwnerMesh->GetSocketLocation(SocketName);
+		const FVector End = Start + OwnerCharacter->GetActorForwardVector() * TraceDistance;
+
+		FHitResult Hit;
+		const bool bHit = GetWorld()->SweepSingleByChannel(
+			Hit,
+			Start,
+			End,
+			FQuat::Identity,
+			ECC_Pawn,
+			Box,
+			QueryParams
+		);
+
+		DrawDebugBox(
+			GetWorld(),
+			(Start + End) * .5f,
+			BoxExtent,
+			FColor::Red,
+			false,
+			.1f
+		);
+
+		if (!bHit || !Hit.GetActor() || HitActorsThisAttack.Contains(Hit.GetActor()))
+		{
+			continue;
+		}
+
+		AActor* HitActor = Hit.GetActor();
+		UGameplayStatics::ApplyDamage(
+			HitActor,
+			Damage,
+			OwnerCharacter->GetController(),
+			OwnerCharacter,
+			nullptr
+		);
+
+		ApplyLocalHitStop(OwnerCharacter, CurrentHitStopType);
+		ApplyLocalHitStop(HitActor, CurrentHitStopType);
+		HitActorsThisAttack.Add(HitActor);
 	}
 }
 
@@ -178,65 +218,6 @@ float UAttackComponent::GetHitStopDuration(const EHitStopType HitStopType) const
 	case EHitStopType::Light:
 	default:
 		return LightHitStopDuration;
-	}
-}
-
-void UAttackComponent::ApplyHitKnockback(AActor* HitActor, const EHitStopType HitStopType) const
-{
-	if (!bEnableKnockback || !OwnerCharacter || !HitActor)
-	{
-		return;
-	}
-
-	ACharacter* HitCharacter = Cast<ACharacter>(HitActor);
-	if (!HitCharacter)
-	{
-		return;
-	}
-
-	const float KnockbackStrength = GetKnockbackStrength(HitStopType);
-	if (KnockbackStrength <= 0.f)
-	{
-		return;
-	}
-
-	if (bRotateTargetTowardAttackerOnHit)
-	{
-		FVector ToAttacker = OwnerCharacter->GetActorLocation() - HitCharacter->GetActorLocation();
-		ToAttacker.Z = 0.f;
-		if (!ToAttacker.IsNearlyZero())
-		{
-			const FRotator FacingAttackerYawOnly(0.f, ToAttacker.Rotation().Yaw, 0.f);
-			HitCharacter->SetActorRotation(FacingAttackerYawOnly);
-		}
-	}
-
-	// Requested behavior: push in the opposite direction of attacker's facing.
-	FVector KnockbackDirection = -OwnerCharacter->GetActorForwardVector();
-	KnockbackDirection.Z = 0.f;
-	KnockbackDirection = KnockbackDirection.GetSafeNormal();
-
-	if (KnockbackDirection.IsNearlyZero())
-	{
-		// Fallback if forward is invalid for any reason.
-		KnockbackDirection = (HitCharacter->GetActorLocation() - OwnerCharacter->GetActorLocation());
-		KnockbackDirection.Z = 0.f;
-		KnockbackDirection = KnockbackDirection.GetSafeNormal();
-	}
-
-	const FVector LaunchVelocity = KnockbackDirection * KnockbackStrength + FVector::UpVector * KnockbackUpwardStrength;
-	HitCharacter->LaunchCharacter(LaunchVelocity, true, true);
-}
-
-float UAttackComponent::GetKnockbackStrength(const EHitStopType HitStopType) const
-{
-	switch (HitStopType)
-	{
-	case EHitStopType::Heavy:
-		return HeavyKnockbackStrength;
-	case EHitStopType::Light:
-	default:
-		return LightKnockbackStrength;
 	}
 }
 

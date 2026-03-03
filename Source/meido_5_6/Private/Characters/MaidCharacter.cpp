@@ -4,6 +4,7 @@
 #include "Characters/MaidCharacter.h"
 #include "Components/InputComponent.h"
 #include "ActorComponents/AttackComponent.h"
+#include "ActorComponents/DashComponent.h"
 #include "ActorComponents/HealthComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
@@ -53,6 +54,7 @@ void AMaidCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	AttackComponent = FindComponentByClass<UAttackComponent>();
+	DashComponent = FindComponentByClass<UDashComponent>();
 	HealthComponent = FindComponentByClass<UHealthComponent>();
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
 	LockOnComponent = FindComponentByClass<ULockOnComponent>();
@@ -90,7 +92,8 @@ void AMaidCharacter::Tick(float DeltaTime)
 
 void AMaidCharacter::DoMove(float Right, float Forward)
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouActive)
+	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
+		CharacterState == ECharacterState::ECS_Dashing)
 	{
 		return;
 	}
@@ -145,7 +148,9 @@ void AMaidCharacter::DoLook(float Yaw, float Pitch)
 
 void AMaidCharacter::DoStartComboAttack()
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouActive || CharacterState == ECharacterState::ECS_Recovering)
+	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
+		CharacterState == ECharacterState::ECS_Recovering ||
+		CharacterState == ECharacterState::ECS_Dashing)
 	{
 		return;
 	}
@@ -282,6 +287,11 @@ void AMaidCharacter::HandleDamageTaken(
 		AttackComponent->CloseHitWindow();
 	}
 
+	if (DashComponent)
+	{
+		DashComponent->CancelDash();
+	}
+
 	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
 	if (!AnimInstance)
 	{
@@ -331,6 +341,11 @@ void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, A
 	if (AttackComponent)
 	{
 		AttackComponent->CloseHitWindow();
+	}
+
+	if (DashComponent)
+	{
+		DashComponent->CancelDash();
 	}
 
 	CharacterState = ECharacterState::ECS_Recovering;
@@ -491,5 +506,49 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
 		MovementComponent->StopMovementImmediately();
+	}
+}
+
+bool AMaidCharacter::CanStartDash() const
+{
+	if (bHasDied)
+	{
+		return false;
+	}
+
+	switch (CharacterState)
+	{
+	case ECharacterState::ECS_Idle:
+		return true;
+	default:
+		return false;
+	}
+}
+
+void AMaidCharacter::NotifyDashStarted()
+{
+	if (bHasDied)
+	{
+		return;
+	}
+
+	if (AttackComponent)
+	{
+		AttackComponent->CloseHitWindow();
+	}
+
+	CharacterState = ECharacterState::ECS_Dashing;
+}
+
+void AMaidCharacter::NotifyDashEnded()
+{
+	if (bHasDied)
+	{
+		return;
+	}
+
+	if (CharacterState == ECharacterState::ECS_Dashing)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
 	}
 }

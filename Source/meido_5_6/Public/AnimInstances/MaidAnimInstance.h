@@ -20,4 +20,13 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category="Maid|Movement")
 	bool bIsLockedOn = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="Maid|Dash")
+	bool bIsDashing = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="Maid|Dash", meta=(ClampMin="-1.0", ClampMax="1.0"))
+	float DashForward = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category="Maid|Dash", meta=(ClampMin="-1.0", ClampMax="1.0"))
+	float DashRight = 0.f;
 };

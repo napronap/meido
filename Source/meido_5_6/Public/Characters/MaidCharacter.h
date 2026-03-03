@@ -10,6 +10,7 @@
 #include "MaidCharacter.generated.h"
 
 class UAttackComponent;
+class UDashComponent;
 class UHealthComponent;
 class ULockOnComponent;
 class UAnimMontage;
@@ -57,6 +58,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	UAttackComponent* AttackComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Movement")
+	UDashComponent* DashComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
 	UHealthComponent* HealthComponent;
@@ -136,4 +140,9 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LockOn")
 	ULockOnComponent* LockOnComponent;
+
+public:
+	bool CanStartDash() const;
+	void NotifyDashStarted();
+	void NotifyDashEnded();
 };

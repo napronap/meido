@@ -4,6 +4,7 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -59,6 +60,7 @@ void APlayerMaidCharacter::Tick(float DeltaTime)
 void APlayerMaidCharacter::Move(const FInputActionValue& Value)
 {
 	const FVector2D MovementVector = Value.Get<FVector2D>();
+	CachedMoveInput = MovementVector;
 
 	DoMove(MovementVector.X, MovementVector.Y);
 }
@@ -83,6 +85,18 @@ void APlayerMaidCharacter::JumpPressed()
 void APlayerMaidCharacter::JumpReleased()
 {
 	StopJumping();
+}
+
+void APlayerMaidCharacter::DashPressed()
+{
+	if (!DashComponent)
+	{
+		return;
+	}
+
+	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
+	const FRotator ControlRotation = Controller ? Controller->GetControlRotation() : GetControlRotation();
+	DashComponent->TryDash(CachedMoveInput, ControlRotation, bLockOnActive);
 }
 
 void APlayerMaidCharacter::ComboAttackPressed()
@@ -249,6 +263,7 @@ void APlayerMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 		// override inherited jump actions
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::JumpPressed);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &APlayerMaidCharacter::JumpReleased);
+		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::DashPressed);
 
 		// mei dou related actions
 		EnhancedInputComponent->BindAction(MeiDouMAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::InputMeiDouM);

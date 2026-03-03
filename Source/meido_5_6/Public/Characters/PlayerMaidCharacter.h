@@ -35,6 +35,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input|Movement")
 	UInputAction* JumpAction;
 
+	UPROPERTY(EditAnywhere, Category="Input|Movement")
+	UInputAction* DashAction;
+
 	UPROPERTY(EditAnywhere, Category="Input|Combat")
 	UInputAction* ComboAttackAction;
 
@@ -61,6 +64,7 @@ protected:
 
 	void JumpPressed();
 	void JumpReleased();
+	void DashPressed();
 
 	void ComboAttackPressed();
 
@@ -90,4 +94,6 @@ protected:
 	// How fast lock-on camera yaw follows target. Lower = smoother/slower.
 	UPROPERTY(EditAnywhere, Category="Camera|LockOn", meta=(ClampMin="0.1", ClampMax="30.0"))
 	float LockOnCameraYawInterpSpeed = 8.f;
+
+	FVector2D CachedMoveInput = FVector2D::ZeroVector;
 };

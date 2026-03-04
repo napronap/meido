@@ -49,7 +49,7 @@ protected:
 	ACharacter* OwnerCharacter;
 
 	UPROPERTY(EditAnywhere, Category="Attack")
-	float Damage = 10.f;
+	float Damage = 20.f;
 
 	UPROPERTY(EditAnywhere, Category="Attack")
 	FVector BoxExtent = FVector(20.f, 20.f, 20.f);

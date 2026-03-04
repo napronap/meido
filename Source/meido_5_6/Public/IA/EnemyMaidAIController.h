@@ -42,6 +42,14 @@ protected:
 	UPROPERTY(EditAnywhere, Category="AI|BehaviorTree", meta=(ClampMin="0.05", UIMin="0.05"))
 	float TargetRefreshInterval = 0.25f;
 
+	// Prevent far enemies from reserving an attack slot.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AI|Combat", meta=(ClampMin="0.0", UIMin="0.0"))
+	float AttackSlotRequestMaxDistance = 520.f;
+
+	// If the enemy drifts too far while holding a slot, it releases it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AI|Combat", meta=(ClampMin="0.0", UIMin="0.0"))
+	float AttackSlotKeepMaxDistance = 700.f;
+
 private:
 	TWeakObjectPtr<APawn> CurrentTargetPawn;
 	float NextTargetRefreshTime = 0.f;

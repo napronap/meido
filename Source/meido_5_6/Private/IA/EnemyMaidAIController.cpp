@@ -76,19 +76,45 @@ void AEnemyMaidAIController::Tick(float DeltaSeconds)
 	if (APawn* TargetPawn = CurrentTargetPawn.Get())
 	{
 		SetFocus(TargetPawn, EAIFocusPriority::Gameplay);
+
+		APawn* ControlledPawn = GetPawn();
+		if (bHasAttackSlot && ControlledPawn && AttackSlotKeepMaxDistance > 0.f)
+		{
+			const FVector ControlledLocation = ControlledPawn->GetActorLocation();
+			const FVector TargetLocation = TargetPawn->GetActorLocation();
+			const float DistanceToTarget = FVector::Dist2D(ControlledLocation, TargetLocation);
+			if (DistanceToTarget > AttackSlotKeepMaxDistance)
+			{
+				ReleaseAttackSlot();
+			}
+		}
 	}
 	else
 	{
 		ClearFocus(EAIFocusPriority::Gameplay);
+		if (bHasAttackSlot)
+		{
+			ReleaseAttackSlot();
+		}
 	}
 }
 
 bool AEnemyMaidAIController::RequestAttackSlotForControlledPawn()
 {
 	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn)
+	APawn* TargetPawn = CurrentTargetPawn.Get();
+	if (!ControlledPawn || !TargetPawn)
 	{
 		return false;
+	}
+
+	if (AttackSlotRequestMaxDistance > 0.f)
+	{
+		const float DistanceToTarget = FVector::Dist2D(ControlledPawn->GetActorLocation(), TargetPawn->GetActorLocation());
+		if (DistanceToTarget > AttackSlotRequestMaxDistance)
+		{
+			return false;
+		}
 	}
 
 	UCombatDirectorSubsystem* CombatDirector = GetGameInstance()
@@ -138,4 +164,3 @@ void AEnemyMaidAIController::ReleaseAttackSlot()
 
 	bHasAttackSlot = false;
 }
-

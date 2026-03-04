@@ -30,7 +30,15 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Task", meta=(ClampMin="0.01", UIMin="0.01"))
 	float SlotRetryInterval = 0.25f;
 
+	UPROPERTY(EditAnywhere, Category="Task|Pathfinding", meta=(ClampMin="0.05", UIMin="0.05"))
+	float RepathInterval = 0.25f;
+
+	UPROPERTY(EditAnywhere, Category="Task|Pathfinding", meta=(ClampMin="5.0", UIMin="5.0"))
+	float PathPointAcceptanceRadius = 50.f;
+
 private:
 	float NextSlotRequestTime = 0.f;
+	float NextRepathTime = 0.f;
+	int32 NextPathPointIndex = 1;
+	TArray<FVector> CachedPathPoints;
 };
-

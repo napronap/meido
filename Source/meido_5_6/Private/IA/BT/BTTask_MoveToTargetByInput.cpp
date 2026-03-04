@@ -3,11 +3,14 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Characters/MaidCharacter.h"
 #include "AIController.h"
+#include "NavigationSystem.h"
+#include "NavigationPath.h"
 
 UBTTask_MoveToTargetByInput::UBTTask_MoveToTargetByInput()
 {
 	NodeName = TEXT("Move To Target (Input)");
 	bNotifyTick = true;
+	bCreateNodeInstance = true;
 	TargetActorKey.AddObjectFilter(this, GET_MEMBER_NAME_CHECKED(UBTTask_MoveToTargetByInput, TargetActorKey), AActor::StaticClass());
 }
 
@@ -22,6 +25,10 @@ EBTNodeResult::Type UBTTask_MoveToTargetByInput::ExecuteTask(UBehaviorTreeCompon
 	{
 		return EBTNodeResult::Failed;
 	}
+
+	CachedPathPoints.Reset();
+	NextPathPointIndex = 1;
+	NextRepathTime = 0.f;
 
 	return EBTNodeResult::InProgress;
 }
@@ -50,10 +57,60 @@ void UBTTask_MoveToTargetByInput::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 		return;
 	}
 
-	const FRotator DesiredControlRotation = ToTarget.GetSafeNormal2D().Rotation();
+	UWorld* World = Maid->GetWorld();
+	const float CurrentTime = World ? World->GetTimeSeconds() : 0.f;
+	const bool bNeedsRepath = (CurrentTime >= NextRepathTime) || (CachedPathPoints.Num() < 2) || (NextPathPointIndex >= CachedPathPoints.Num());
+
+	if (bNeedsRepath)
+	{
+		CachedPathPoints.Reset();
+		NextPathPointIndex = 1;
+
+		if (World)
+		{
+			if (UNavigationPath* NavPath = UNavigationSystemV1::FindPathToActorSynchronously(
+				World,
+				Maid->GetActorLocation(),
+				TargetActor,
+				AcceptableRange,
+				Maid))
+			{
+				CachedPathPoints = NavPath->PathPoints;
+			}
+		}
+
+		NextRepathTime = CurrentTime + FMath::Max(0.05f, RepathInterval);
+	}
+
+	FVector MoveDir = ToTarget.GetSafeNormal2D();
+	while (CachedPathPoints.IsValidIndex(NextPathPointIndex))
+	{
+		FVector ToPathPoint = CachedPathPoints[NextPathPointIndex] - Maid->GetActorLocation();
+		ToPathPoint.Z = 0.f;
+		if (ToPathPoint.SizeSquared2D() <= FMath::Square(PathPointAcceptanceRadius))
+		{
+			++NextPathPointIndex;
+			continue;
+		}
+
+		MoveDir = ToPathPoint.GetSafeNormal2D();
+		break;
+	}
+
+	if (MoveDir.IsNearlyZero())
+	{
+		MoveDir = ToTarget.GetSafeNormal2D();
+	}
+
+	if (MoveDir.IsNearlyZero())
+	{
+		Maid->DoMove(0.f, 0.f);
+		return;
+	}
+
+	const FRotator DesiredControlRotation = MoveDir.Rotation();
 	AIController->SetControlRotation(FRotator(0.f, DesiredControlRotation.Yaw, 0.f));
 
-	const FVector MoveDir = ToTarget.GetSafeNormal2D();
 	const FRotator ControlYaw(0.f, AIController->GetControlRotation().Yaw, 0.f);
 	const FVector ForwardAxis = FRotationMatrix(ControlYaw).GetUnitAxis(EAxis::X);
 	const FVector RightAxis = FRotationMatrix(ControlYaw).GetUnitAxis(EAxis::Y);
@@ -75,7 +132,9 @@ void UBTTask_MoveToTargetByInput::OnTaskFinished(
 	{
 		Maid->DoMove(0.f, 0.f);
 	}
+	CachedPathPoints.Reset();
+	NextPathPointIndex = 1;
+	NextRepathTime = 0.f;
 
 	Super::OnTaskFinished(OwnerComp, NodeMemory, TaskResult);
 }
-

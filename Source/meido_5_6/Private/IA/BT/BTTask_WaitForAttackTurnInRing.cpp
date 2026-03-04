@@ -3,6 +3,8 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Characters/MaidCharacter.h"
 #include "IA/EnemyMaidAIController.h"
+#include "NavigationSystem.h"
+#include "NavigationPath.h"
 
 UBTTask_WaitForAttackTurnInRing::UBTTask_WaitForAttackTurnInRing()
 {
@@ -25,6 +27,9 @@ EBTNodeResult::Type UBTTask_WaitForAttackTurnInRing::ExecuteTask(UBehaviorTreeCo
 	}
 
 	NextSlotRequestTime = 0.f;
+	NextRepathTime = 0.f;
+	NextPathPointIndex = 1;
+	CachedPathPoints.Reset();
 	return EBTNodeResult::InProgress;
 }
 
@@ -55,13 +60,59 @@ void UBTTask_WaitForAttackTurnInRing::TickTask(UBehaviorTreeComponent& OwnerComp
 	const float SafeOuterMin = FMath::Max(0.f, FMath::Min(OuterRingMinRange, OuterRingMaxRange));
 	const float SafeOuterMax = FMath::Max(SafeOuterMin, FMath::Max(OuterRingMinRange, OuterRingMaxRange));
 
+	UWorld* World = Maid->GetWorld();
+	const float CurrentTime = World ? World->GetTimeSeconds() : 0.f;
+
 	if (Distance > SafeOuterMax)
 	{
+		const bool bNeedsRepath = (CurrentTime >= NextRepathTime) || (CachedPathPoints.Num() < 2) || (NextPathPointIndex >= CachedPathPoints.Num());
+		if (bNeedsRepath)
+		{
+			CachedPathPoints.Reset();
+			NextPathPointIndex = 1;
+
+			if (World)
+			{
+				if (UNavigationPath* NavPath = UNavigationSystemV1::FindPathToActorSynchronously(
+					World,
+					Maid->GetActorLocation(),
+					TargetActor,
+					SafeOuterMax,
+					Maid))
+				{
+					CachedPathPoints = NavPath->PathPoints;
+				}
+			}
+
+			NextRepathTime = CurrentTime + FMath::Max(0.05f, RepathInterval);
+		}
+
 		DesiredMoveWorld = ToTarget.GetSafeNormal2D();
+		while (CachedPathPoints.IsValidIndex(NextPathPointIndex))
+		{
+			FVector ToPathPoint = CachedPathPoints[NextPathPointIndex] - Maid->GetActorLocation();
+			ToPathPoint.Z = 0.f;
+			if (ToPathPoint.SizeSquared2D() <= FMath::Square(PathPointAcceptanceRadius))
+			{
+				++NextPathPointIndex;
+				continue;
+			}
+
+			DesiredMoveWorld = ToPathPoint.GetSafeNormal2D();
+			break;
+		}
 	}
 	else if (Distance < SafeOuterMin)
 	{
+		CachedPathPoints.Reset();
+		NextPathPointIndex = 1;
+		NextRepathTime = CurrentTime + FMath::Max(0.05f, RepathInterval);
 		DesiredMoveWorld = -ToTarget.GetSafeNormal2D();
+	}
+	else
+	{
+		CachedPathPoints.Reset();
+		NextPathPointIndex = 1;
 	}
 
 	if (DesiredMoveWorld.SizeSquared2D() > KINDA_SMALL_NUMBER)
@@ -78,7 +129,6 @@ void UBTTask_WaitForAttackTurnInRing::TickTask(UBehaviorTreeComponent& OwnerComp
 		Maid->DoMove(0.f, 0.f);
 	}
 
-	const float CurrentTime = Maid->GetWorld() ? Maid->GetWorld()->GetTimeSeconds() : 0.f;
 	if (CurrentTime < NextSlotRequestTime)
 	{
 		return;
@@ -106,7 +156,9 @@ void UBTTask_WaitForAttackTurnInRing::OnTaskFinished(
 	{
 		Maid->DoMove(0.f, 0.f);
 	}
+	CachedPathPoints.Reset();
+	NextPathPointIndex = 1;
+	NextRepathTime = 0.f;
 
 	Super::OnTaskFinished(OwnerComp, NodeMemory, TaskResult);
 }
-

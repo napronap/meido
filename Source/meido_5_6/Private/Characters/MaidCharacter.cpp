@@ -90,6 +90,26 @@ void AMaidCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
+float AMaidCharacter::TakeDamage(
+	float DamageAmount,
+	FDamageEvent const& DamageEvent,
+	AController* EventInstigator,
+	AActor* DamageCauser
+)
+{
+	if (bHasDied || DamageAmount <= 0.f)
+	{
+		return 0.f;
+	}
+
+	if (HasActiveIFrames())
+	{
+		return 0.f;
+	}
+
+	return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+}
+
 void AMaidCharacter::DoMove(float Right, float Forward)
 {
 	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
@@ -146,13 +166,39 @@ void AMaidCharacter::DoLook(float Yaw, float Pitch)
 	AddControllerYawInput(Yaw);
 }
 
+bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
+{
+	if (!DashComponent)
+	{
+		return false;
+	}
+
+	const FRotator ControlOrActorRotation = Controller
+		? Controller->GetControlRotation()
+		: GetActorRotation();
+
+	return DashComponent->TryDash(MoveInput, ControlOrActorRotation, bLockOnActive);
+}
+
 void AMaidCharacter::DoStartComboAttack()
 {
 	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
 		CharacterState == ECharacterState::ECS_Recovering ||
-		CharacterState == ECharacterState::ECS_Dashing)
+		CharacterState == ECharacterState::ECS_Dashing ||
+		bDamageReactionActive)
 	{
 		return;
+	}
+
+	if (DamageMontage)
+	{
+		if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+		{
+			if (AnimInstance->Montage_IsPlaying(DamageMontage))
+			{
+				return;
+			}
+		}
 	}
 
 	// only attack if we are not in the air, at least for now
@@ -172,6 +218,12 @@ void AMaidCharacter::DoStartComboAttack()
 
 void AMaidCharacter::DoContinueCombo()
 {
+	if (!AttackComponent || !ComboAttackMontage)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
+		return;
+	}
+
 	AttackComponent->StartAttack();
 	CharacterState = ECharacterState::ECS_Attacking;
 
@@ -187,6 +239,14 @@ void AMaidCharacter::DoContinueCombo()
 		{
 			AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ComboAttackMontage);
 		}
+		else
+		{
+			CharacterState = ECharacterState::ECS_Idle;
+		}
+	}
+	else
+	{
+		CharacterState = ECharacterState::ECS_Idle;
 	}
 }
 
@@ -248,11 +308,19 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 		}
 	}
 
+	if (bDamageReactionActive)
+	{
+		CharacterState = ECharacterState::ECS_Recovering;
+		return;
+	}
+
 	CharacterState = ECharacterState::ECS_Idle;
 }
 
 void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	bDamageReactionActive = false;
+
 	if (bHasDied)
 	{
 		return;
@@ -277,8 +345,18 @@ void AMaidCharacter::HandleDamageTaken(
 	AController* InstigatedBy
 )
 {
+	// MeiDou (pose/result) has super armor: take damage but do not interrupt action montages.
+	if (MeiDouComponent && MeiDouComponent->GetMeiDouState() != EMeiDouState::EMDS_Idle)
+	{
+		return;
+	}
+
 	if (!DamageMontage)
 	{
+		if (IsPlayerControlled())
+		{
+			GrantIFrames(PostDamageIFrameDuration);
+		}
 		return;
 	}
 
@@ -303,6 +381,12 @@ void AMaidCharacter::HandleDamageTaken(
 	AnimInstance->Montage_Stop(0.05f);
 
 	CharacterState = ECharacterState::ECS_Recovering;
+	bDamageReactionActive = true;
+
+	if (IsPlayerControlled())
+	{
+		GrantIFrames(PostDamageIFrameDuration);
+	}
 
 	FName SectionToPlay = NAME_None;
 	if (DamageSectionNames.Num() > 0)
@@ -327,6 +411,7 @@ void AMaidCharacter::HandleDamageTaken(
 		return;
 	}
 
+	bDamageReactionActive = false;
 	CharacterState = ECharacterState::ECS_Idle;
 }
 
@@ -349,6 +434,7 @@ void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, A
 	}
 
 	CharacterState = ECharacterState::ECS_Recovering;
+	bDamageReactionActive = false;
 
 	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
 	{
@@ -538,6 +624,11 @@ void AMaidCharacter::NotifyDashStarted()
 	}
 
 	CharacterState = ECharacterState::ECS_Dashing;
+
+	if (IsPlayerControlled())
+	{
+		GrantIFrames(DashIFrameDuration);
+	}
 }
 
 void AMaidCharacter::NotifyDashEnded()
@@ -551,4 +642,40 @@ void AMaidCharacter::NotifyDashEnded()
 	{
 		CharacterState = ECharacterState::ECS_Idle;
 	}
+}
+
+ECharacterState AMaidCharacter::GetCharacterState() const
+{
+	return CharacterState;
+}
+
+bool AMaidCharacter::IsDead() const
+{
+	if (bHasDied)
+	{
+		return true;
+	}
+
+	return HealthComponent && HealthComponent->IsDead();
+}
+
+void AMaidCharacter::GrantIFrames(const float DurationSeconds)
+{
+	if (DurationSeconds <= 0.f || !GetWorld())
+	{
+		return;
+	}
+
+	const float NewUntil = GetWorld()->GetTimeSeconds() + DurationSeconds;
+	InvulnerableUntilTime = FMath::Max(InvulnerableUntilTime, NewUntil);
+}
+
+bool AMaidCharacter::HasActiveIFrames() const
+{
+	if (!GetWorld())
+	{
+		return false;
+	}
+
+	return GetWorld()->GetTimeSeconds() < InvulnerableUntilTime;
 }

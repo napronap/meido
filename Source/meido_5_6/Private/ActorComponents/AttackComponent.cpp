@@ -2,6 +2,7 @@
 
 
 #include "ActorComponents/AttackComponent.h"
+#include "Characters/EnemyMaid.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
@@ -147,6 +148,11 @@ void UAttackComponent::PerformHitTrace()
 		}
 
 		AActor* HitActor = Hit.GetActor();
+		if (ShouldIgnoreHitActor(HitActor))
+		{
+			continue;
+		}
+
 		UGameplayStatics::ApplyDamage(
 			HitActor,
 			Damage,
@@ -159,6 +165,29 @@ void UAttackComponent::PerformHitTrace()
 		ApplyLocalHitStop(HitActor, CurrentHitStopType);
 		HitActorsThisAttack.Add(HitActor);
 	}
+}
+
+bool UAttackComponent::ShouldIgnoreHitActor(const AActor* HitActor) const
+{
+	if (!HitActor || !OwnerCharacter)
+	{
+		return true;
+	}
+
+	if (bAllowFriendlyFire)
+	{
+		return false;
+	}
+
+	const bool bOwnerIsEnemyMaid = OwnerCharacter->IsA(AEnemyMaid::StaticClass());
+	const bool bTargetIsEnemyMaid = HitActor->IsA(AEnemyMaid::StaticClass());
+
+	if (bOwnerIsEnemyMaid && bTargetIsEnemyMaid)
+	{
+		return true;
+	}
+
+	return false;
 }
 
 void UAttackComponent::ApplyLocalHitStop(AActor* TargetActor, const EHitStopType HitStopType)

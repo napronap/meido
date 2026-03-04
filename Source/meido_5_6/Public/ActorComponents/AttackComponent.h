@@ -40,6 +40,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	void PerformHitTrace();
+	bool ShouldIgnoreHitActor(const AActor* HitActor) const;
 	void ApplyLocalHitStop(AActor* TargetActor, EHitStopType HitStopType);
 	void RestoreLocalTimeDilation(AActor* TargetActor);
 	float GetHitStopDuration(EHitStopType HitStopType) const;
@@ -55,6 +56,10 @@ protected:
 	
 	UPROPERTY(EditAnywhere, Category="Attack")
 	float TraceDistance = 60.f;
+
+	// If false, enemies won't damage other enemies (friendly fire off for EnemyMaid).
+	UPROPERTY(EditAnywhere, Category="Attack")
+	bool bAllowFriendlyFire = false;
 
 	UPROPERTY(EditAnywhere, Category="Attack")
 	FName HitSocketName = "Attack_Hand_R";

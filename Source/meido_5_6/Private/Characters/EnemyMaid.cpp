@@ -4,6 +4,22 @@
 #include "Characters/EnemyMaid.h"
 #include "ActorComponents/HealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "IA/EnemyMaidAIController.h"
+
+AEnemyMaid::AEnemyMaid()
+{
+	AIControllerClass = AEnemyMaidAIController::StaticClass();
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+	bUseControllerRotationYaw = true;
+
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->bOrientRotationToMovement = false;
+		MovementComponent->bUseRVOAvoidance = true;
+		MovementComponent->AvoidanceConsiderationRadius = 180.f;
+	}
+}
 
 FVector AEnemyMaid::GetTargetLocation_Implementation()
 {

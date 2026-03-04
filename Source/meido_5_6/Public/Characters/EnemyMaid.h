@@ -16,6 +16,8 @@ class MEIDO_5_6_API AEnemyMaid : public AMaidCharacter, public ITargetable
 	GENERATED_BODY()
 
 public:
+	AEnemyMaid();
+
 	virtual FVector GetTargetLocation_Implementation() override;
 	virtual bool CanBeTargeted_Implementation() const override;
 };

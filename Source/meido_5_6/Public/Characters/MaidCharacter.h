@@ -25,6 +25,19 @@ public:
 	AMaidCharacter();
 
 	virtual void Tick(float DeltaTime) override;
+	virtual float TakeDamage(
+		float DamageAmount,
+		struct FDamageEvent const& DamageEvent,
+		AController* EventInstigator,
+		AActor* DamageCauser
+	) override;
+
+	/*
+	 * movement/combat actions (player or AI)
+	 */
+	void DoMove(float Right, float Forward);
+	void DoStartComboAttack();
+	bool DoDash(const FVector2D& MoveInput = FVector2D::ZeroVector, bool bLockOnActive = false);
 
 protected:
 	virtual void BeginPlay() override;
@@ -32,7 +45,6 @@ protected:
 	/*
 	 *	movement (maybe put camera in player maid class because AI maid won't use it
 	 */
-	void DoMove(float Right, float Forward);
 	void DoLook(float Yaw, float Pitch);
 	virtual void Jump() override;
 	virtual void StopJumping() override;
@@ -65,7 +77,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
 	UHealthComponent* HealthComponent;
 
-	void DoStartComboAttack();
 	void DoContinueCombo();
 
 	virtual void CheckCombo_Implementation() override;
@@ -109,6 +120,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Damage")
 	TArray<FName> DamageSectionNames;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
+	float PostDamageIFrameDuration = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
+	float DashIFrameDuration = 0.10f;
+
 	UFUNCTION()
 	void HandleDamageTaken(
 		UHealthComponent* InHealthComponent,
@@ -122,6 +139,7 @@ protected:
 	void HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser);
 
 	int32 NextDamageSectionIndex = 0;
+	bool bDamageReactionActive = false;
 
 	/*
 	 * death
@@ -134,6 +152,7 @@ protected:
 	float DeathLifeSpanSeconds = 6.f;
 
 	bool bHasDied = false;
+	float InvulnerableUntilTime = 0.f;
 
 	/*
 	 * lock on
@@ -145,4 +164,10 @@ public:
 	bool CanStartDash() const;
 	void NotifyDashStarted();
 	void NotifyDashEnded();
+	ECharacterState GetCharacterState() const;
+	bool IsDead() const;
+
+protected:
+	void GrantIFrames(float DurationSeconds);
+	bool HasActiveIFrames() const;
 };

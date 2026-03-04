@@ -8,6 +8,12 @@
 
 class ACharacter;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FOnLockOnChanged,
+	AActor*, NewTarget,
+	bool, bSuccess
+);
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class MEIDO_5_6_API ULockOnComponent : public UActorComponent
 {
@@ -35,6 +41,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void HandleSwitchReleased();
 	void SwitchTarget(int32 Direction);
+
+	UPROPERTY(BlueprintAssignable)
+	FOnLockOnChanged OnLockOnChanged;
 
 protected:
 	// Called when the game starts

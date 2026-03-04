@@ -72,17 +72,26 @@ void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 bool ULockOnComponent::TryLockOn()
 {
 	if (!OwnerCharacter)
+	{
+		OnLockOnChanged.Broadcast(nullptr, false);
 		return false;
+	}
 
 	APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
 	if (!PC)
+	{
+		OnLockOnChanged.Broadcast(nullptr, false);
 		return false;
+	}
 
 	TArray<AActor*> Candidates;
 	FindTargets(Candidates);
 
 	if (Candidates.Num() == 0)
+	{
+		OnLockOnChanged.Broadcast(nullptr, false);
 		return false;
+	}
 
 	int32 ViewportX, ViewportY;
 	PC->GetViewportSize(ViewportX, ViewportY);
@@ -132,9 +141,11 @@ bool ULockOnComponent::TryLockOn()
 	{
 		CurrentTarget = BestTarget;
 		bCanSwitchTarget = true; // reset
+		OnLockOnChanged.Broadcast(BestTarget, true);
 		return true;
 	}
 
+	OnLockOnChanged.Broadcast(nullptr, false);
 	return false;
 }
 
@@ -143,6 +154,7 @@ void ULockOnComponent::ClearLockOn()
 {
 	CurrentTarget = nullptr;
 	bCanSwitchTarget = true;
+	OnLockOnChanged.Broadcast(nullptr, false);
 }
 
 bool ULockOnComponent::IsLockedOn()
@@ -290,7 +302,12 @@ void ULockOnComponent::SwitchTarget(int32 Direction)
 		NextIndex = 0;
 	}
 
+	AActor* PreviousTarget = CurrentTarget;
 	CurrentTarget = Visible[NextIndex].Actor;
+	if (CurrentTarget != PreviousTarget)
+	{
+		OnLockOnChanged.Broadcast(CurrentTarget, true);
+	}
 }
 
 bool ULockOnComponent::IsTargetValidForLockOn(const AActor* Target) const

@@ -46,6 +46,7 @@ AMaidCharacter::AMaidCharacter()
 
 	OnAttackMontageEnded.BindUObject(this, &AMaidCharacter::AttackMontageEnded);
 	OnDamageMontageEnded.BindUObject(this, &AMaidCharacter::DamageMontageEnded);
+	OnMeiDouFailMontageEnded.BindUObject(this, &AMaidCharacter::MeiDouFailMontageEnded);
 }
 
 // Called when the game starts or when spawned
@@ -107,16 +108,9 @@ float AMaidCharacter::TakeDamage(
 		return 0.f;
 	}
 
-	// MeiDou fail montage grants temporary invulnerability while it is playing.
-	if (MeiDouFailMontage)
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
-		if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
-		{
-			if (AnimInstance->Montage_IsPlaying(MeiDouFailMontage))
-			{
-				return 0.f;
-			}
-		}
+		return 0.f;
 	}
 
 	if (HasActiveIFrames())
@@ -130,7 +124,8 @@ float AMaidCharacter::TakeDamage(
 void AMaidCharacter::DoMove(float Right, float Forward)
 {
 	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
-		CharacterState == ECharacterState::ECS_Dashing)
+		CharacterState == ECharacterState::ECS_Dashing ||
+		CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
 		return;
 	}
@@ -159,6 +154,11 @@ void AMaidCharacter::DoMove(float Right, float Forward)
 
 void AMaidCharacter::Jump()
 {
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	{
+		return;
+	}
+
 	// only jump in idle, so we don't have weird behavior of jumping while character is playing the attack montage
 	if (CharacterState == ECharacterState::ECS_Idle)
 	{
@@ -190,6 +190,11 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 		return false;
 	}
 
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	{
+		return false;
+	}
+
 	const FRotator ControlOrActorRotation = Controller
 		? Controller->GetControlRotation()
 		: GetActorRotation();
@@ -202,6 +207,7 @@ void AMaidCharacter::DoStartComboAttack()
 	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
 		CharacterState == ECharacterState::ECS_Recovering ||
 		CharacterState == ECharacterState::ECS_Dashing ||
+		CharacterState == ECharacterState::ECS_MeiDouFailed ||
 		bDamageReactionActive)
 	{
 		return;
@@ -349,6 +355,19 @@ void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	}
 
 	if (CharacterState != ECharacterState::ECS_MeiDouActive)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
+	}
+}
+
+void AMaidCharacter::MeiDouFailMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (bHasDied)
+	{
+		return;
+	}
+
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
 		CharacterState = ECharacterState::ECS_Idle;
 	}
@@ -601,8 +620,16 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 
 	SetMeiDouMirrorFlag(GetMesh(), false);
 
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+	}
+
+	CharacterState = ECharacterState::ECS_MeiDouFailed;
+
 	if (!MeiDouFailMontage)
 	{
+		CharacterState = ECharacterState::ECS_Idle;
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
 	}
@@ -610,6 +637,7 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 	const float MontageLength = PlayAnimMontage(MeiDouFailMontage, 1.f);
 	if (MontageLength <= 0.f)
 	{
+		CharacterState = ECharacterState::ECS_Idle;
 		UE_LOG(
 			LogTemp,
 			Warning,
@@ -618,6 +646,11 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
+	}
+
+	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+	{
+		AnimInstance->Montage_SetEndDelegate(OnMeiDouFailMontageEnded, MeiDouFailMontage);
 	}
 
 	if (!GEngine)

@@ -88,6 +88,9 @@ protected:
 	FOnMontageEnded OnDamageMontageEnded;
 	void DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
+	FOnMontageEnded OnMeiDouFailMontageEnded;
+	void MeiDouFailMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
 	/*
 	 * mei dou
 	 */

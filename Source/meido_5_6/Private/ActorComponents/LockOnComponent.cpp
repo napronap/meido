@@ -36,12 +36,12 @@ void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 		Overlaps
 	);
 
-	FString Message1 = FString::Printf(
-		TEXT("Overlaps found: %d"), Overlaps.Num());
-
-	GEngine->AddOnScreenDebugMessage(
-		-1, 1.5f, FColor::Yellow, Message1
-	);
+	// FString Message1 = FString::Printf(
+	// 	TEXT("Overlaps found: %d"), Overlaps.Num());
+	//
+	// GEngine->AddOnScreenDebugMessage(
+	// 	-1, 1.5f, FColor::Yellow, Message1
+	// );
 
 	UE_LOG(LogTemp, Warning, TEXT("Overlaps found: %d"), Overlaps.Num());
 
@@ -59,13 +59,13 @@ void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 			}
 		}
 
-		FString Message2 = FString::Printf(
-			TEXT("Overlap: %s, ImplementsTargetable=%d"), *GetNameSafe(Actor),
-			Actor && Actor->Implements<UTargetable>());
-
-		GEngine->AddOnScreenDebugMessage(
-			-1, 1.5f, FColor::Yellow, Message2
-		);
+		// FString Message2 = FString::Printf(
+		// 	TEXT("Overlap: %s, ImplementsTargetable=%d"), *GetNameSafe(Actor),
+		// 	Actor && Actor->Implements<UTargetable>());
+		//
+		// GEngine->AddOnScreenDebugMessage(
+		// 	-1, 1.5f, FColor::Yellow, Message2
+		// );
 	}
 }
 
@@ -108,8 +108,7 @@ bool ULockOnComponent::TryLockOn()
 	{
 		FVector TargetLocation = Target->GetActorLocation();
 
-
-		// Si implementa ITargetable, usamos su punto de target
+		
 		if (Target->Implements<UTargetable>())
 		{
 			TargetLocation = ITargetable::Execute_GetTargetLocation(Target);
@@ -122,7 +121,7 @@ bool ULockOnComponent::TryLockOn()
 		if (!bOnScreen)
 			continue;
 
-		// Opcional: margen para evitar bordes extremos
+		// avoid extreme borders (probably fine though)
 		if (ScreenPos.X < 0.f || ScreenPos.Y < 0.f ||
 			ScreenPos.X > ViewportX || ScreenPos.Y > ViewportY)
 			continue;
@@ -177,21 +176,25 @@ void ULockOnComponent::HandleSwitchInput(float AxisValue)
 	if (!IsLockedOn())
 		return;
 
+	// deadzone although it's super low because I found it annoying sometimes target wouldn't switch
+	// probably will remove this check. Deadzone is not important since camera is locked anyway and you're not supposed expect a move/change target behavior
+	float StickDeadZone = 0.001f;
+
 	if (!bCanSwitchTarget)
 	{
-		if (FMath::Abs(AxisValue) < NeutralThreshold)
+		if (FMath::Abs(AxisValue) <= StickDeadZone)
 		{
 			bCanSwitchTarget = true;
 		}
 		return;
 	}
 
-	if (AxisValue > SwitchThreshold)
+	if (AxisValue > StickDeadZone)
 	{
 		SwitchTarget(+1);
 		bCanSwitchTarget = false;
 	}
-	else if (AxisValue < -SwitchThreshold)
+	else if (AxisValue < -StickDeadZone)
 	{
 		SwitchTarget(-1);
 		bCanSwitchTarget = false;
@@ -245,7 +248,7 @@ void ULockOnComponent::SwitchTarget(int32 Direction)
 		return Actor->GetActorLocation();
 	};
 
-	// 1) Proyectar todos y quedarse con los que están en pantalla
+	// 1) find all and only use on screen targets
 	for (AActor* Target : Candidates)
 	{
 		if (!Target) continue;
@@ -267,13 +270,13 @@ void ULockOnComponent::SwitchTarget(int32 Direction)
 	if (Visible.Num() <= 1)
 		return;
 
-	// 2) Ordenar por X (izquierda → derecha)
+	// 2) order by x axis (left > right)
 	Algo::Sort(Visible, [](const FScreenTarget& A, const FScreenTarget& B)
 	{
 		return A.ScreenPos.X < B.ScreenPos.X;
 	});
 
-	// 3) Encontrar el índice del current
+	// 3) find current target index
 	int32 CurrentIndex = INDEX_NONE;
 	for (int32 i = 0; i < Visible.Num(); ++i)
 	{
@@ -284,15 +287,14 @@ void ULockOnComponent::SwitchTarget(int32 Direction)
 		}
 	}
 
-	// Si el current no está en la lista visible (raro pero puede pasar), no switch
+	// check if current does not exist (probably shouldn't happen)
 	if (CurrentIndex == INDEX_NONE)
 		return;
 
-	// 4) Elegir vecino: Direction +1 = derecha, -1 = izquierda
+	// 4) find closest (+1 right, -1 left) with wrapping
 	const int32 Step = (Direction > 0) ? +1 : -1;
 	int32 NextIndex = CurrentIndex + Step;
-
-	// Si no querés wrap, dejalo así:
+	
 	if (NextIndex < 0)
 	{
 		NextIndex = Visible.Num() - 1;

@@ -40,6 +40,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 );
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FOnMeiDouComboFailed,
+	const FMeiDouResolvedCombo&, Result
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FOnMeiDouPoseAnimationRequested,
 	const FMeiDouPoseAnimationRequest&, Request
 );
@@ -97,6 +102,9 @@ public:
 	FOnMeiDouComboResolved OnComboResolved;
 
 	UPROPERTY(BlueprintAssignable)
+	FOnMeiDouComboFailed OnComboFailed;
+
+	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouPoseAnimationRequested OnPoseAnimationRequested;
 
 	UPROPERTY(BlueprintAssignable)
@@ -146,14 +154,20 @@ private:
 	UPROPERTY()
 	FMeiDouResolvedCombo PendingResolvedComboResult;
 
+	UPROPERTY()
+	FMeiDouResolvedCombo PendingFailedComboResult;
+	bool bHasPendingFailedCombo = false;
+
 	TWeakObjectPtr<AActor> SpawnedResultActor;
 	bool bDestroySpawnedResultActorOnActionEnd = false;
 
 	void SetMeiDouState(EMeiDouState NewState);
 	bool HasActiveComboDefinition() const;
 	bool HasPendingResolvedCombo() const;
+	bool HasPendingFailedCombo() const;
 	void ClearActiveComboDefinition();
 	void ClearPendingResolvedCombo();
+	void ClearPendingFailedCombo();
 	void CleanupSpawnedResultActor();
 	void RestartComboInputTimeout();
 	void ClearComboInputTimeout();

@@ -49,6 +49,7 @@ void UMeiDouComponent::BeginPlay()
 	QueuedPoseInputs.Reserve(MaxInputs);
 	ClearActiveComboDefinition();
 	ClearPendingResolvedCombo();
+	ClearPendingFailedCombo();
 	SpawnedResultActor.Reset();
 	bDestroySpawnedResultActorOnActionEnd = false;
 	ClearComboInputTimeout();
@@ -248,6 +249,11 @@ bool UMeiDouComponent::HasPendingResolvedCombo() const
 	return bHasPendingResolvedCombo;
 }
 
+bool UMeiDouComponent::HasPendingFailedCombo() const
+{
+	return bHasPendingFailedCombo;
+}
+
 void UMeiDouComponent::ClearActiveComboDefinition()
 {
 	ActiveComboDefinition = FMeiDouComboDefinition();
@@ -259,6 +265,12 @@ void UMeiDouComponent::ClearPendingResolvedCombo()
 	PendingResolvedComboDefinition = FMeiDouComboDefinition();
 	PendingResolvedComboResult = FMeiDouResolvedCombo();
 	bHasPendingResolvedCombo = false;
+}
+
+void UMeiDouComponent::ClearPendingFailedCombo()
+{
+	PendingFailedComboResult = FMeiDouResolvedCombo();
+	bHasPendingFailedCombo = false;
 }
 
 void UMeiDouComponent::CleanupSpawnedResultActor()
@@ -380,6 +392,15 @@ void UMeiDouComponent::TryConsumeNextQueuedAction()
 		return;
 	}
 
+	if (HasPendingFailedCombo())
+	{
+		const FMeiDouResolvedCombo FailedResult = PendingFailedComboResult;
+		ClearPendingFailedCombo();
+
+		OnComboFailed.Broadcast(FailedResult);
+		return;
+	}
+
 	// Idle with a partial combo buffer waiting for the next input.
 	if (ComboInputBuffer.Num() > 0)
 	{
@@ -447,7 +468,11 @@ bool UMeiDouComponent::TryResolve()
 		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, FailMessage);
 	}
 
-	// if combo doesn't exist, do nothing and reset the input
+	PendingFailedComboResult.ComboId = NAME_None;
+	PendingFailedComboResult.Inputs = ComboInputBuffer;
+	bHasPendingFailedCombo = true;
+
+	// if combo doesn't exist, queue fail result and reset input
 	ResetCombo();
 	return false;
 }

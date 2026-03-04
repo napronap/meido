@@ -106,10 +106,16 @@ protected:
 	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
 
 	UFUNCTION()
+	void HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result);
+
+	UFUNCTION()
 	void HandleMeiDouControlLockChanged(bool bIsLocked);
 
 	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MeiDou")
+	UAnimMontage* MeiDouFailMontage = nullptr;
 
 	/*
 	 * damage

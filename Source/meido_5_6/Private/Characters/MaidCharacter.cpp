@@ -77,6 +77,11 @@ void AMaidCharacter::BeginPlay()
 			&AMaidCharacter::HandleMeiDouComboResolved
 		);
 
+		MeiDouComponent->OnComboFailed.AddDynamic(
+			this,
+			&AMaidCharacter::HandleMeiDouComboFailed
+		);
+
 		MeiDouComponent->OnMeiDouControlLockChanged.AddDynamic(
 			this,
 			&AMaidCharacter::HandleMeiDouControlLockChanged
@@ -100,6 +105,18 @@ float AMaidCharacter::TakeDamage(
 	if (bHasDied || DamageAmount <= 0.f)
 	{
 		return 0.f;
+	}
+
+	// MeiDou fail montage grants temporary invulnerability while it is playing.
+	if (MeiDouFailMontage)
+	{
+		if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+		{
+			if (AnimInstance->Montage_IsPlaying(MeiDouFailMontage))
+			{
+				return 0.f;
+			}
+		}
 	}
 
 	if (HasActiveIFrames())
@@ -572,6 +589,47 @@ void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Resul
 		2.5f,
 		FColor::Green,
 		Message
+	);
+}
+
+void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
+{
+	if (!MeiDouComponent)
+	{
+		return;
+	}
+
+	SetMeiDouMirrorFlag(GetMesh(), false);
+
+	if (!MeiDouFailMontage)
+	{
+		MeiDouComponent->OnRequestedAnimationFailed();
+		return;
+	}
+
+	const float MontageLength = PlayAnimMontage(MeiDouFailMontage, 1.f);
+	if (MontageLength <= 0.f)
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("Could not play MeiDou fail montage. Check montage slot setup.")
+		);
+
+		MeiDouComponent->OnRequestedAnimationFailed();
+		return;
+	}
+
+	if (!GEngine)
+	{
+		return;
+	}
+
+	GEngine->AddOnScreenDebugMessage(
+		-1,
+		2.0f,
+		FColor::Yellow,
+		TEXT("MeiDou combo failed")
 	);
 }
 

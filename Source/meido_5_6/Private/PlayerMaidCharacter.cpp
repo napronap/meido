@@ -7,6 +7,7 @@
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
+#include "PlayerControllers/MaidPlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -31,17 +32,65 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ViewCamera"));
 	ViewCamera->SetupAttachment(CameraBoom);
+
+	// Player should remain in scene on death for lose flow/camera.
+	DeathLifeSpanSeconds = 0.f;
+}
+
+void APlayerMaidCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (!bApplyMenuCameraPoseOnBeginPlay)
+	{
+		return;
+	}
+
+	if (const AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
+	{
+		if (MaidPC->GetFlowState() == EFlowState::MainMenu)
+		{
+			ApplyMenuCameraPose();
+		}
+		return;
+	}
+
+	ApplyMenuCameraPose();
+}
+
+void APlayerMaidCharacter::ResetForFlowRestart()
+{
+	Super::ResetForFlowRestart();
+
+	if (LockOnComponent && LockOnComponent->IsLockedOn())
+	{
+		LockOnComponent->ClearLockOn();
+	}
+
+	bWasLockOnActive = false;
+	bMenuCameraTransitionActive = false;
+	bWinSequenceActive = false;
+	bLoseSequenceActive = false;
+
+	if (GetUpMontage)
+	{
+		PlayAnimMontage(GetUpMontage);
+	}
 }
 
 void APlayerMaidCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	UpdateMenuCameraTransition(DeltaTime);
+	UpdateWinSequenceTransition(DeltaTime);
+	UpdateLoseSequenceTransition(DeltaTime);
+
 	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
 	UpdateAnimLockOnState(bLockOnActive);
 	ApplyLockOnMovementMode(bLockOnActive);
 
-	if (bLockOnActive)
+	if (bLockOnActive && !bWinSequenceActive && !bLoseSequenceActive)
 	{
 		AActor* Target = LockOnComponent->GetCurrentTarget();
 		if (Target)
@@ -54,6 +103,283 @@ void APlayerMaidCharacter::Tick(float DeltaTime)
 	FString Message = FString::Printf(
 		TEXT("Character State: %s"), *EnumPtr->GetNameStringByValue(static_cast<int64>(CharacterState)));
 	GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Red, Message);
+}
+
+void APlayerMaidCharacter::ApplyMenuCameraPose()
+{
+	if (!CameraBoom)
+	{
+		return;
+	}
+
+	CameraBoom->TargetArmLength = FMath::Max(0.f, MenuArmLength);
+	FVector SocketOffset = CameraBoom->SocketOffset;
+	SocketOffset.Y = MenuHorizontalOffset;
+	CameraBoom->SocketOffset = SocketOffset;
+
+	AController* LocalController = Controller;
+	if (!LocalController)
+	{
+		LocalController = GetController();
+	}
+
+	if (!LocalController)
+	{
+		return;
+	}
+
+	const FRotator ActorRot = GetActorRotation();
+	const FRotator MenuRot(MenuPitch, ActorRot.Yaw + MenuYawOffset, 0.f);
+	LocalController->SetControlRotation(MenuRot);
+}
+
+void APlayerMaidCharacter::StartMenuCameraTransitionToGameplay()
+{
+	AController* LocalController = Controller;
+	if (!LocalController)
+	{
+		LocalController = GetController();
+	}
+
+	if (!LocalController || !CameraBoom || bMenuCameraTransitionActive)
+	{
+		return;
+	}
+
+	bMenuCameraTransitionActive = true;
+	MenuCameraTransitionElapsed = 0.f;
+	MenuCameraTransitionStartArmLength = CameraBoom->TargetArmLength;
+	MenuCameraTransitionStartSocketOffsetY = CameraBoom->SocketOffset.Y;
+	MenuCameraTransitionTargetSocketOffsetY = GameplayHorizontalOffset;
+	MenuCameraTransitionStartRotation = LocalController->GetControlRotation();
+
+	const FRotator ActorRot = GetActorRotation();
+	MenuCameraTransitionTargetRotation = FRotator(
+		GameplayPitch,
+		ActorRot.Yaw + GameplayYawOffset,
+		0.f
+	);
+}
+
+void APlayerMaidCharacter::UpdateMenuCameraTransition(const float DeltaTime)
+{
+	if (!bMenuCameraTransitionActive)
+	{
+		return;
+	}
+
+	AController* LocalController = Controller;
+	if (!LocalController)
+	{
+		LocalController = GetController();
+	}
+
+	if (!LocalController || !CameraBoom)
+	{
+		bMenuCameraTransitionActive = false;
+		return;
+	}
+
+	const float Duration = FMath::Max(0.01f, MenuToGameplayTransitionDuration);
+	MenuCameraTransitionElapsed += FMath::Max(0.f, DeltaTime);
+	const float Alpha = FMath::Clamp(MenuCameraTransitionElapsed / Duration, 0.f, 1.f);
+	const float EasedAlpha = FMath::InterpEaseInOut(0.f, 1.f, Alpha, MenuToGameplayTransitionExponent);
+
+	const float NewArmLength = FMath::Lerp(MenuCameraTransitionStartArmLength, GameplayArmLength, EasedAlpha);
+	CameraBoom->TargetArmLength = NewArmLength;
+	FVector SocketOffset = CameraBoom->SocketOffset;
+	SocketOffset.Y = FMath::Lerp(MenuCameraTransitionStartSocketOffsetY, MenuCameraTransitionTargetSocketOffsetY, EasedAlpha);
+	CameraBoom->SocketOffset = SocketOffset;
+
+	const FRotator NewRotation = FMath::Lerp(MenuCameraTransitionStartRotation, MenuCameraTransitionTargetRotation, EasedAlpha);
+	LocalController->SetControlRotation(NewRotation);
+
+	if (Alpha < 1.f)
+	{
+		return;
+	}
+
+	bMenuCameraTransitionActive = false;
+	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
+	{
+		MaidPC->CompleteStartGameFromMenu();
+	}
+}
+
+void APlayerMaidCharacter::StartWinSequenceCameraTransition()
+{
+	AController* LocalController = Controller;
+	if (!LocalController)
+	{
+		LocalController = GetController();
+	}
+
+	if (!LocalController || !CameraBoom || bWinSequenceActive)
+	{
+		return;
+	}
+
+	if (LockOnComponent && LockOnComponent->IsLockedOn())
+	{
+		LockOnComponent->ClearLockOn();
+	}
+
+	if (WinMontage)
+	{
+		PlayAnimMontage(WinMontage);
+	}
+
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		MeshComp->SetMorphTarget(TEXT("Fcl_MTH_Fun"), 0.3f);
+		MeshComp->SetMorphTarget(TEXT("Fcl_MTH_Joy"), 0.6f);
+		MeshComp->SetMorphTarget(TEXT("Fcl_EYE_Joy"), 1.f);
+	}
+	
+	bWinSequenceActive = true;
+	WinSequenceElapsed = 0.f;
+	WinSequenceStartArmLength = CameraBoom->TargetArmLength;
+	WinSequenceStartSocketOffsetY = CameraBoom->SocketOffset.Y;
+	WinSequenceStartRotation = LocalController->GetControlRotation();
+	WinSequenceTargetArmLength = FMath::Max(0.f, MenuArmLength);
+	WinSequenceTargetSocketOffsetY = MenuHorizontalOffset;
+
+	const FRotator ActorRot = GetActorRotation();
+	WinSequenceTargetRotation = FRotator(
+		MenuPitch,
+		ActorRot.Yaw + MenuYawOffset,
+		0.f
+	);
+}
+
+void APlayerMaidCharacter::StartLoseSequenceCameraTransition()
+{
+	AController* LocalController = Controller;
+	if (!LocalController)
+	{
+		LocalController = GetController();
+	}
+
+	if (!LocalController || !CameraBoom || bLoseSequenceActive)
+	{
+		return;
+	}
+
+	if (LockOnComponent && LockOnComponent->IsLockedOn())
+	{
+		LockOnComponent->ClearLockOn();
+	}
+
+	bLoseSequenceActive = true;
+	LoseSequenceElapsed = 0.f;
+	LoseSequenceStartArmLength = CameraBoom->TargetArmLength;
+	LoseSequenceStartSocketOffsetY = CameraBoom->SocketOffset.Y;
+	LoseSequenceStartRotation = LocalController->GetControlRotation();
+	LoseSequenceTargetArmLength = FMath::Max(0.f, LoseArmLength);
+	LoseSequenceTargetSocketOffsetY = LoseHorizontalOffset;
+
+	const FRotator ActorRot = GetActorRotation();
+	LoseSequenceTargetRotation = FRotator(
+		LosePitch,
+		ActorRot.Yaw + LoseYawOffset,
+		0.f
+	);
+}
+
+void APlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
+{
+	if (!bWinSequenceActive)
+	{
+		return;
+	}
+
+	AController* LocalController = Controller;
+	if (!LocalController)
+	{
+		LocalController = GetController();
+	}
+
+	if (!LocalController || !CameraBoom)
+	{
+		bWinSequenceActive = false;
+		if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
+		{
+			MaidPC->CompleteWinSequence();
+		}
+		return;
+	}
+
+	const float Duration = FMath::Max(0.01f, WinTransitionDuration);
+	WinSequenceElapsed += FMath::Max(0.f, DeltaTime);
+	const float Alpha = FMath::Clamp(WinSequenceElapsed / Duration, 0.f, 1.f);
+	const float EasedAlpha = FMath::InterpEaseInOut(0.f, 1.f, Alpha, WinTransitionExponent);
+
+	CameraBoom->TargetArmLength = FMath::Lerp(WinSequenceStartArmLength, WinSequenceTargetArmLength, EasedAlpha);
+	FVector SocketOffset = CameraBoom->SocketOffset;
+	SocketOffset.Y = FMath::Lerp(WinSequenceStartSocketOffsetY, WinSequenceTargetSocketOffsetY, EasedAlpha);
+	CameraBoom->SocketOffset = SocketOffset;
+
+	const FRotator NewRotation = FMath::Lerp(WinSequenceStartRotation, WinSequenceTargetRotation, EasedAlpha);
+	LocalController->SetControlRotation(NewRotation);
+
+	if (Alpha < 1.f)
+	{
+		return;
+	}
+
+	bWinSequenceActive = false;
+	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
+	{
+		MaidPC->CompleteWinSequence();
+	}
+}
+
+void APlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
+{
+	if (!bLoseSequenceActive)
+	{
+		return;
+	}
+
+	AController* LocalController = Controller;
+	if (!LocalController)
+	{
+		LocalController = GetController();
+	}
+
+	if (!LocalController || !CameraBoom)
+	{
+		bLoseSequenceActive = false;
+		if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
+		{
+			MaidPC->CompleteLoseSequence();
+		}
+		return;
+	}
+
+	const float Duration = FMath::Max(0.01f, LoseTransitionDuration);
+	LoseSequenceElapsed += FMath::Max(0.f, DeltaTime);
+	const float Alpha = FMath::Clamp(LoseSequenceElapsed / Duration, 0.f, 1.f);
+	const float EasedAlpha = FMath::InterpEaseInOut(0.f, 1.f, Alpha, LoseTransitionExponent);
+
+	CameraBoom->TargetArmLength = FMath::Lerp(LoseSequenceStartArmLength, LoseSequenceTargetArmLength, EasedAlpha);
+	FVector SocketOffset = CameraBoom->SocketOffset;
+	SocketOffset.Y = FMath::Lerp(LoseSequenceStartSocketOffsetY, LoseSequenceTargetSocketOffsetY, EasedAlpha);
+	CameraBoom->SocketOffset = SocketOffset;
+
+	const FRotator NewRotation = FMath::Lerp(LoseSequenceStartRotation, LoseSequenceTargetRotation, EasedAlpha);
+	LocalController->SetControlRotation(NewRotation);
+
+	if (Alpha < 1.f)
+	{
+		return;
+	}
+
+	bLoseSequenceActive = false;
+	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
+	{
+		MaidPC->CompleteLoseSequence();
+	}
 }
 
 

@@ -69,6 +69,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Health")
 	void Heal(float Amount);
 
+	UFUNCTION(BlueprintCallable, Category="Health")
+	void ResetToFullHealth();
+
 private:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Health", meta=(AllowPrivateAccess="true"))
 	float MaxHealth = 100.f;

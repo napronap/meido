@@ -15,6 +15,12 @@ class MEIDO_5_6_API AEnemyMaidAIController : public AAIController
 public:
 	AEnemyMaidAIController();
 
+	UFUNCTION(BlueprintCallable, Category="AI")
+	void SetAIEnabled(bool bEnabled);
+
+	UFUNCTION(BlueprintPure, Category="AI")
+	bool IsAIEnabled() const { return bAIEnabled; }
+
 	// Request/release combat slot helpers for BT tasks or BP logic.
 	UFUNCTION(BlueprintCallable, Category="AI|Combat")
 	bool RequestAttackSlotForControlledPawn();
@@ -31,22 +37,22 @@ protected:
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void OnUnPossess() override;
 
-	// Main behavior entrypoint. AI flow is authored in BT (no C++ fallback logic).
+	// Main behavior entrypoint. AI flow is done in BT blueprint
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AI|BehaviorTree")
 	UBehaviorTree* BehaviorTreeAsset = nullptr;
 
-	// Blackboard key updated with current target pawn while BT mode is active.
+	// Blackboard key updated with current target pawn while BT mode is active
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AI|BehaviorTree")
 	FName TargetActorBlackboardKeyName = TEXT("TargetActor");
 
 	UPROPERTY(EditAnywhere, Category="AI|BehaviorTree", meta=(ClampMin="0.05", UIMin="0.05"))
 	float TargetRefreshInterval = 0.25f;
 
-	// Prevent far enemies from reserving an attack slot.
+	// Prevent far enemies from reserving an attack slot (will probably make private)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AI|Combat", meta=(ClampMin="0.0", UIMin="0.0"))
 	float AttackSlotRequestMaxDistance = 520.f;
 
-	// If the enemy drifts too far while holding a slot, it releases it.
+	// If the enemy drifts too far while holding a slot, it releases it
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AI|Combat", meta=(ClampMin="0.0", UIMin="0.0"))
 	float AttackSlotKeepMaxDistance = 700.f;
 
@@ -54,6 +60,7 @@ private:
 	TWeakObjectPtr<APawn> CurrentTargetPawn;
 	float NextTargetRefreshTime = 0.f;
 	bool bHasAttackSlot = false;
+	bool bAIEnabled = false;
 
 	void UpdateTarget();
 	void ReleaseAttackSlot();

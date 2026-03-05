@@ -211,15 +211,10 @@ void AEnemyWaveSpawner::HandleEnemyDestroyed(AActor* DestroyedActor)
 
 void AEnemyWaveSpawner::HandleEnemyHealthDepleted(UHealthComponent* HealthComponent, AActor* DamageCauser)
 {
-	if (!HealthComponent)
-	{
-		return;
-	}
+	(void)HealthComponent;
+	(void)DamageCauser;
 
-	if (AEnemyMaid* EnemyOwner = Cast<AEnemyMaid>(HealthComponent->GetOwner()))
-	{
-		RemoveAliveEnemy(EnemyOwner);
-	}
-
-	EvaluateWaveCompletion();
+	// Intentionally do nothing here.
+	// We count enemies as "gone" only when they are actually destroyed/despawned
+	// (e.g., after death lifespan), so wave completion waits for visual cleanup.
 }

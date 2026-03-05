@@ -1,6 +1,7 @@
 #include "IA/EnemyMaidAIController.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
+#include "BrainComponent.h"
 #include "Characters/MaidCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "IA/CombatDirectorSubsystem.h"
@@ -34,14 +35,10 @@ void AEnemyMaidAIController::OnPossess(APawn* InPawn)
 	NextTargetRefreshTime = 0.f;
 	UpdateTarget();
 
-	if (BehaviorTreeAsset)
+	// AI is flow-driven by the player controller. Do not auto-start here.
+	if (bAIEnabled)
 	{
-		RunBehaviorTree(BehaviorTreeAsset);
-	}
-
-	if (Blackboard)
-	{
-		Blackboard->SetValueAsObject(TargetActorBlackboardKeyName, CurrentTargetPawn.Get());
+		SetAIEnabled(true);
 	}
 }
 
@@ -55,6 +52,11 @@ void AEnemyMaidAIController::OnUnPossess()
 void AEnemyMaidAIController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	if (!bAIEnabled)
+	{
+		return;
+	}
 
 	if (!GetPawn())
 	{
@@ -101,6 +103,11 @@ void AEnemyMaidAIController::Tick(float DeltaSeconds)
 
 bool AEnemyMaidAIController::RequestAttackSlotForControlledPawn()
 {
+	if (!bAIEnabled)
+	{
+		return false;
+	}
+
 	APawn* ControlledPawn = GetPawn();
 	APawn* TargetPawn = CurrentTargetPawn.Get();
 	if (!ControlledPawn || !TargetPawn)
@@ -143,6 +150,48 @@ bool AEnemyMaidAIController::HasAttackSlotForControlledPawn() const
 void AEnemyMaidAIController::UpdateTarget()
 {
 	CurrentTargetPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+}
+
+void AEnemyMaidAIController::SetAIEnabled(const bool bEnabled)
+{
+	if (!bEnabled && !bAIEnabled)
+	{
+		return;
+	}
+
+	bAIEnabled = bEnabled;
+
+	if (!bAIEnabled)
+	{
+		StopMovement();
+		ClearFocus(EAIFocusPriority::Gameplay);
+		ReleaseAttackSlot();
+
+		if (UBrainComponent* Brain = BrainComponent)
+		{
+			Brain->StopLogic(TEXT("AI disabled by flow state"));
+		}
+
+		return;
+	}
+
+	NextTargetRefreshTime = 0.f;
+	UpdateTarget();
+
+	if (!GetPawn())
+	{
+		return;
+	}
+
+	if (BehaviorTreeAsset)
+	{
+		RunBehaviorTree(BehaviorTreeAsset);
+	}
+
+	if (Blackboard)
+	{
+		Blackboard->SetValueAsObject(TargetActorBlackboardKeyName, CurrentTargetPawn.Get());
+	}
 }
 
 void AEnemyMaidAIController::ReleaseAttackSlot()

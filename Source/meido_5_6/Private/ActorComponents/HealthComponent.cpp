@@ -41,6 +41,16 @@ void UHealthComponent::Heal(float Amount)
 	}
 }
 
+void UHealthComponent::ResetToFullHealth()
+{
+	const float PreviousHealth = CurrentHealth;
+	CurrentHealth = FMath::Clamp(MaxHealth, 0.f, MaxHealth);
+	bIsDead = CurrentHealth <= 0.f;
+
+	const float Delta = CurrentHealth - PreviousHealth;
+	OnHealthChanged.Broadcast(this, CurrentHealth, MaxHealth, Delta);
+}
+
 void UHealthComponent::HandleOwnerTakeAnyDamage(
 	AActor* DamagedActor,
 	const float Damage,

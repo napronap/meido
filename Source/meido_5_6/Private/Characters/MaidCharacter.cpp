@@ -12,6 +12,7 @@
 #include "Animation/AnimInstance.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
+#include "IA/EnemyMaidAIController.h"
 
 namespace
 {
@@ -469,6 +470,13 @@ void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, A
 		DashComponent->CancelDash();
 	}
 
+	// Stop controller-driven yaw updates on dead bodies.
+	bUseControllerRotationYaw = false;
+	if (AEnemyMaidAIController* EnemyAIController = Cast<AEnemyMaidAIController>(GetController()))
+	{
+		EnemyAIController->SetAIEnabled(false);
+	}
+
 	CharacterState = ECharacterState::ECS_Recovering;
 	bDamageReactionActive = false;
 
@@ -748,6 +756,45 @@ bool AMaidCharacter::IsDead() const
 	}
 
 	return HealthComponent && HealthComponent->IsDead();
+}
+
+void AMaidCharacter::ResetForFlowRestart()
+{
+	bHasDied = false;
+	bDamageReactionActive = false;
+	InvulnerableUntilTime = 0.f;
+	ComboCount = 0;
+	CachedAttackInputTime = 0.f;
+	NextDamageSectionIndex = 0;
+	CharacterState = ECharacterState::ECS_Idle;
+
+	SetLifeSpan(0.f);
+
+	if (AttackComponent)
+	{
+		AttackComponent->CloseHitWindow();
+	}
+
+	if (DashComponent)
+	{
+		DashComponent->CancelDash();
+	}
+
+	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+	{
+		AnimInstance->Montage_Stop(0.f);
+	}
+
+	if (HealthComponent)
+	{
+		HealthComponent->ResetToFullHealth();
+	}
+
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->SetMovementMode(MOVE_Walking);
+		MovementComponent->StopMovementImmediately();
+	}
 }
 
 void AMaidCharacter::GrantIFrames(const float DurationSeconds)

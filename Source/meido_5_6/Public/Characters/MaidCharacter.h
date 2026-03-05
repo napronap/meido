@@ -175,6 +175,7 @@ public:
 	void NotifyDashEnded();
 	ECharacterState GetCharacterState() const;
 	bool IsDead() const;
+	virtual void ResetForFlowRestart();
 
 protected:
 	void GrantIFrames(float DurationSeconds);

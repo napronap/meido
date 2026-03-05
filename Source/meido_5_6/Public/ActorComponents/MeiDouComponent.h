@@ -77,17 +77,18 @@ public:
 	// register the pose input
 	bool RegisterInput(EMeiDouInput Input);
 
-	// Called by animation notify state to indicate current MeiDou action lifecycle.
+	// Called by animation notify state to indicate current MeiDou action lifecycle
 	void OnMeiDouActionWindowBegin();
 	void OnMeiDouActionWindowEnd();
 
-	// Called by animation owner if a requested montage could not be played.
+	// Called by animation owner if a requested montage could not be played
+	// TODO: remove (all definitions should be correct)
 	void OnRequestedAnimationFailed();
 
-	// Handles generic animation events emitted by MeiDou notifies.
+	// Handles generic animation events emitted by MeiDou notifies
 	void HandleAnimEvent(EMeiDouAnimEvent EventKey);
 
-	// Returns the currently resolved combo definition while its result montage is active.
+	// Returns the currently resolved combo definition while its result montage is active
 	const FMeiDouComboDefinition* GetActiveComboDefinition() const;
 
 	EMeiDouState GetMeiDouState() const { return MeiDouState; }
@@ -98,6 +99,7 @@ public:
 
 	// Delegate that broadcasts the output of the combo
 	// again, not sure if this will eventually be used in blueprints anyways
+	// TODO: don't need all these on bp confirmed (for now)
 	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouComboResolved OnComboResolved;
 

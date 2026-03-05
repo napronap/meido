@@ -33,7 +33,8 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ViewCamera"));
 	ViewCamera->SetupAttachment(CameraBoom);
 
-	// Player should remain in scene on death for lose flow/camera.
+	// Player should remain in scene on death for lose flow/camera
+	// (different from enemy maid that uses this to despawn)
 	DeathLifeSpanSeconds = 0.f;
 }
 
@@ -309,10 +310,10 @@ void APlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
 		return;
 	}
 
-	const float Duration = FMath::Max(0.01f, WinTransitionDuration);
+	const float Duration = FMath::Max(0.01f, MenuToGameplayTransitionDuration);
 	WinSequenceElapsed += FMath::Max(0.f, DeltaTime);
 	const float Alpha = FMath::Clamp(WinSequenceElapsed / Duration, 0.f, 1.f);
-	const float EasedAlpha = FMath::InterpEaseInOut(0.f, 1.f, Alpha, WinTransitionExponent);
+	const float EasedAlpha = FMath::InterpEaseInOut(0.f, 1.f, Alpha, MenuToGameplayTransitionExponent);
 
 	CameraBoom->TargetArmLength = FMath::Lerp(WinSequenceStartArmLength, WinSequenceTargetArmLength, EasedAlpha);
 	FVector SocketOffset = CameraBoom->SocketOffset;
@@ -397,8 +398,8 @@ void APlayerMaidCharacter::Look(const FInputActionValue& Value)
 
 	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
 
-	// While lock-on is active we keep yaw camera control driven by target tracking.
-	// Player can still adjust pitch manually.
+	// While lockon is active we keep yaw camera control driven by target tracking
+	// Player can still adjust pitch manually
 	const float YawInput = bLockOnActive ? 0.f : LookAxisVector.X;
 	DoLook(YawInput, LookAxisVector.Y);
 }

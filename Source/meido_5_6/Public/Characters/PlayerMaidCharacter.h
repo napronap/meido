@@ -158,12 +158,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Camera|Win")
 	UAnimMontage* WinMontage = nullptr;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Camera|Win", meta=(ClampMin="0.01", UIMin="0.01"))
-	float WinTransitionDuration = 1.25f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Camera|Win", meta=(ClampMin="1.0", UIMin="1.0"))
-	float WinTransitionExponent = 2.0f;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Camera|Lose", meta=(ClampMin="0.0", UIMin="0.0"))
 	float LoseArmLength = 420.f;
 

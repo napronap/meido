@@ -32,13 +32,14 @@ private:
 	UPROPERTY(EditAnywhere, Category="Bomb|Fall", meta=(ClampMin="0.0"))
 	float FallSpeed = 1800.f;
 
-	// Trace channel used to detect ground impact while falling.
-	// For robust setup, assign a custom channel blocked only by walkable ground.
+	// Trace channel used to detect ground impact while falling
+	// i.e the channel that will detonate the bomb
 	UPROPERTY(EditAnywhere, Category="Bomb|Collision")
 	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_WorldStatic;
 
-	// Minimum upward normal to treat a blocking hit as "ground-like" impact.
-	// Helps ignore side walls/buildings while still impacting on floor surfaces.
+	// Minimum upward normal to treat a blocking hit as "ground-like" impact
+	// Helps ignore side walls/buildings
+	// TODO: probably unneeded since I'm now using the trace channel (remainder)
 	UPROPERTY(EditAnywhere, Category="Bomb|Fall", meta=(ClampMin="0.0", ClampMax="1.0"))
 	float GroundImpactMinNormalZ = 0.55f;
 
@@ -60,7 +61,7 @@ private:
 	UPROPERTY(EditAnywhere, Category="Bomb|Impact|HitStop", meta=(EditCondition="bApplyImpactHitStop"))
 	bool bApplyImpactHitStopToOwner = true;
 
-	// Time to stay alive after first valid impact.
+	// Time to stay alive after first valid impact
 	UPROPERTY(EditAnywhere, Category="Bomb|Impact", meta=(ClampMin="0.0"))
 	float DestroyDelay = 2.0f;
 

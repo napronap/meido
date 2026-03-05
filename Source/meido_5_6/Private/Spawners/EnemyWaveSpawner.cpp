@@ -118,11 +118,6 @@ void AEnemyWaveSpawner::TrySpawn()
 	AliveEnemies.Add(SpawnedEnemy);
 	SpawnedEnemy->OnDestroyed.AddDynamic(this, &AEnemyWaveSpawner::HandleEnemyDestroyed);
 
-	if (UHealthComponent* HealthComponent = SpawnedEnemy->FindComponentByClass<UHealthComponent>())
-	{
-		HealthComponent->OnHealthDepleted.AddDynamic(this, &AEnemyWaveSpawner::HandleEnemyHealthDepleted);
-	}
-
 	OnEnemySpawned.Broadcast(SpawnedEnemy);
 }
 
@@ -207,14 +202,7 @@ void AEnemyWaveSpawner::HandleEnemyDestroyed(AActor* DestroyedActor)
 	RemoveAliveEnemy(Cast<AEnemyMaid>(DestroyedActor));
 	CleanupAliveEnemies();
 	EvaluateWaveCompletion();
-}
-
-void AEnemyWaveSpawner::HandleEnemyHealthDepleted(UHealthComponent* HealthComponent, AActor* DamageCauser)
-{
-	(void)HealthComponent;
-	(void)DamageCauser;
-
-	// Intentionally do nothing here.
 	// We count enemies as "gone" only when they are actually destroyed/despawned
-	// (e.g., after death lifespan), so wave completion waits for visual cleanup.
+	// (e.g., after death lifespan), so wave completion waits for visual cleanup
+	// this is so after killing the last enemy the win animation doesn't play instantly
 }

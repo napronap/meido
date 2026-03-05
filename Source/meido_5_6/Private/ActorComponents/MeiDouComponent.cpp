@@ -401,7 +401,7 @@ void UMeiDouComponent::TryConsumeNextQueuedAction()
 		return;
 	}
 
-	// Idle with a partial combo buffer waiting for the next input.
+	// idle with a partial combo buffer waiting for the next input.
 	if (ComboInputBuffer.Num() > 0)
 	{
 		RestartComboInputTimeout();
@@ -487,30 +487,9 @@ void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 {
 	UWorld* World = GetWorld();
 	AActor* OwnerActor = GetOwner();
-	if (!World)
+	
+	if (!World || !OwnerActor || !SpawnConfig.SpawnedActorClass)
 	{
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("MeiDou Spawn failed: invalid World"));
-		}
-		return;
-	}
-
-	if (!OwnerActor)
-	{
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("MeiDou Spawn failed: invalid Owner"));
-		}
-		return;
-	}
-
-	if (!SpawnConfig.SpawnedActorClass)
-	{
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Red, TEXT("MeiDou Spawn failed: SpawnedActorClass is null"));
-		}
 		return;
 	}
 

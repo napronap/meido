@@ -87,7 +87,7 @@ void UAttackComponent::OpenHitWindowSockets(const TArray<FName>& InSockets)
 		CurrentHitSockets.Add(HitSocketName);
 	}
 
-	// Allow each hit window (each swing/section) to damage targets once.
+	// only damage one per hit window
 	HitActorsThisAttack.Reset();
 	bHitWindowOpen = true;
 }

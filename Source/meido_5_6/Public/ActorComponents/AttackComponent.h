@@ -57,7 +57,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Attack")
 	float TraceDistance = 60.f;
 
-	// If false, enemies won't damage other enemies (friendly fire off for EnemyMaid).
+	// (friendly fire off for EnemyMaid)
 	UPROPERTY(EditAnywhere, Category="Attack")
 	bool bAllowFriendlyFire = false;
 

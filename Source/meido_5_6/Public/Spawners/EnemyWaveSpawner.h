@@ -48,11 +48,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawner")
 	TSubclassOf<AEnemyMaid> EnemyClass;
 
-	// Total enemies in this wave. If all are dead, wave is completed.
+	// Total enemies in this wave. If all are dead, wave is completed
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawner", meta=(ClampMin="0", UIMin="0"))
 	int32 TotalEnemiesToSpawn = 6;
 
-	// Max alive enemies at once. The spawner refills until reaching TotalEnemiesToSpawn.
+	// Max alive enemies at once. The spawner refills until reaching TotalEnemiesToSpawn
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawner", meta=(ClampMin="1", UIMin="1"))
 	int32 MaxAliveAtOnce = 2;
 
@@ -87,7 +87,4 @@ private:
 
 	UFUNCTION()
 	void HandleEnemyDestroyed(AActor* DestroyedActor);
-
-	UFUNCTION()
-	void HandleEnemyHealthDepleted(UHealthComponent* HealthComponent, AActor* DamageCauser);
 };

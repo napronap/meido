@@ -382,7 +382,8 @@ void AMaidCharacter::HandleDamageTaken(
 	AController* InstigatedBy
 )
 {
-	// MeiDou (pose/result) has super armor: take damage but do not interrupt action montages.
+	// MeiDou (pose/result) has super armor: take damage but do not interrupt action montages
+	// should probably introduce a poise mechanic in the future...
 	if (MeiDouComponent && MeiDouComponent->GetMeiDouState() != EMeiDouState::EMDS_Idle)
 	{
 		return;
@@ -440,7 +441,8 @@ void AMaidCharacter::HandleDamageTaken(
 		return;
 	}
 
-	// Fallback: if a section name is invalid/missing, play montage from its default start.
+	// fallback if no section name
+	// TODO: remove, configurations should always exist
 	const float FallbackLength = PlayAnimMontage(DamageMontage, 1.f);
 	if (FallbackLength > 0.f)
 	{
@@ -470,7 +472,7 @@ void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, A
 		DashComponent->CancelDash();
 	}
 
-	// Stop controller-driven yaw updates on dead bodies.
+	// stop controller driven yaw updates on dead bodies (dead maids were still rotating to character)
 	bUseControllerRotationYaw = false;
 	if (AEnemyMaidAIController* EnemyAIController = Cast<AEnemyMaidAIController>(GetController()))
 	{
@@ -561,7 +563,8 @@ void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Resul
 	{
 		if (ComboDefinition->AnimationMontage)
 		{
-			// Result montages are played from their default start, unlike pose inputs that always use "Pose" section.
+			// play result montages from their default start, unlike pose inputs that always use "Pose" section
+			// TODO: make more consistent (either start all from "Pose" or not)
 			const float MontageLength = PlayAnimMontage(ComboDefinition->AnimationMontage, 1.f);
 			if (MontageLength <= 0.f)
 			{

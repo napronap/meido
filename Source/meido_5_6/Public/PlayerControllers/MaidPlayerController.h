@@ -117,8 +117,10 @@ private:
 	bool bWaitingForMenuCameraTransition = false;
 	bool bWaitingForWinSequence = false;
 	bool bWaitingForLoseSequence = false;
+	bool bDebugDisableEnemyAI = false;
 
 	void OnPauseInput(const FInputActionValue& Value);
+	void OnDebugToggleEnemyAI();
 	void EnterMainMenuState();
 	void EnterPlayingState();
 	void EnterPausedState();

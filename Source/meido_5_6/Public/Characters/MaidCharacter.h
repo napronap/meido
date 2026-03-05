@@ -156,7 +156,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Death")
 	UAnimMontage* DeathMontage = nullptr;
 
-	// If > 0, actor will auto-destroy this many seconds after death.
+	// actor will auto destroy this many seconds after death (used for the enemy maids, player shouldn't destroy for infinite loop)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Death", meta=(ClampMin="0.0", UIMin="0.0"))
 	float DeathLifeSpanSeconds = 6.f;
 

@@ -21,7 +21,7 @@ public:
 	UFUNCTION(BlueprintPure, Category="AI")
 	bool IsAIEnabled() const { return bAIEnabled; }
 
-	// Request/release combat slot helpers for BT tasks or BP logic.
+	// Request/release combat slot helpers for BT tasks or BP logic
 	UFUNCTION(BlueprintCallable, Category="AI|Combat")
 	bool RequestAttackSlotForControlledPawn();
 

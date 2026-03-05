@@ -15,6 +15,7 @@
 #include "Engine/LocalPlayer.h"
 #include "EngineUtils.h"
 #include "Components/InputComponent.h"
+#include "InputCoreTypes.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -42,10 +43,16 @@ void AMaidPlayerController::SetupInputComponent()
 	{
 		if (PauseInputAction)
 		{
-			// Allow this action to fire while gameplay is paused so it can unpause.
+			// Allow this action to fire while gameplay is paused so it can unpause
 			PauseInputAction->bTriggerWhenPaused = true;
 			EnhancedInputComponent->BindAction(PauseInputAction, ETriggerEvent::Started, this, &AMaidPlayerController::OnPauseInput);
 		}
+	}
+
+	if (InputComponent)
+	{
+		// TODO remove (debug only): quick AI freeze toggle for demos.
+		InputComponent->BindKey(EKeys::K, IE_Pressed, this, &AMaidPlayerController::OnDebugToggleEnemyAI);
 	}
 }
 
@@ -125,7 +132,7 @@ void AMaidPlayerController::StartGameFromMenu()
 
 	if (APlayerMaidCharacter* PlayerMaid = Cast<APlayerMaidCharacter>(GetPawn()))
 	{
-		// For restart from Win/Lose, interpolate directly from current camera (no snap to menu pose).
+		// For restart from Win/Lose, interpolate directly from current camera (no snap to menu pose)
 		if (!bRestartingFromResultState)
 		{
 			PlayerMaid->ApplyMenuCameraPose();
@@ -237,6 +244,18 @@ void AMaidPlayerController::OnPauseInput(const FInputActionValue& Value)
 {
 	(void)Value;
 	TogglePauseMenu();
+}
+
+void AMaidPlayerController::OnDebugToggleEnemyAI()
+{
+	bDebugDisableEnemyAI = !bDebugDisableEnemyAI;
+
+	const bool bShouldEnableAI = (CurrentFlowState == EFlowState::Playing)
+		&& !bWaitingForWinSequence
+		&& !bWaitingForLoseSequence
+		&& !bDebugDisableEnemyAI;
+
+	SetAllEnemyAIEnabled(bShouldEnableAI);
 }
 
 void AMaidPlayerController::EnterMainMenuState()
@@ -407,7 +426,6 @@ void AMaidPlayerController::StartLoseSequence()
 
 	if (BoundWaveSpawner)
 	{
-		// Prevent new spawns during lose camera transition.
 		BoundWaveSpawner->StopWave();
 	}
 
@@ -558,7 +576,7 @@ UUserWidget* AMaidPlayerController::EnsureWidget(TObjectPtr<UUserWidget>& Widget
 
 void AMaidPlayerController::SetGameplayInputEnabled(const bool bEnabled)
 {
-	// These ignore flags are stack-based in UE, so force a deterministic state first.
+	// this is probably making the "snapping" upon game start, but it's the easiest way to control it for now
 	ResetIgnoreMoveInput();
 	ResetIgnoreLookInput();
 
@@ -635,7 +653,10 @@ void AMaidPlayerController::HandleWaveCompleted()
 
 void AMaidPlayerController::HandleEnemySpawned(AEnemyMaid* SpawnedEnemy)
 {
-	const bool bShouldEnableAI = (CurrentFlowState == EFlowState::Playing) && !bWaitingForWinSequence;
+	const bool bShouldEnableAI = (CurrentFlowState == EFlowState::Playing)
+		&& !bWaitingForWinSequence
+		&& !bWaitingForLoseSequence
+		&& !bDebugDisableEnemyAI;
 	SetEnemyAIEnabled(SpawnedEnemy, bShouldEnableAI);
 }
 
@@ -655,9 +676,11 @@ void AMaidPlayerController::HandlePlayerHealthDepleted(UHealthComponent* InHealt
 
 void AMaidPlayerController::SetAllEnemyAIEnabled(const bool bEnabled)
 {
+	const bool bFinalEnabled = bEnabled && !bDebugDisableEnemyAI;
+
 	for (TActorIterator<AEnemyMaid> It(GetWorld()); It; ++It)
 	{
-		SetEnemyAIEnabled(*It, bEnabled);
+		SetEnemyAIEnabled(*It, bFinalEnabled);
 	}
 }
 

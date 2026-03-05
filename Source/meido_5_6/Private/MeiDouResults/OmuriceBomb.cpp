@@ -16,7 +16,7 @@ AOmuriceBomb::AOmuriceBomb()
 
 	BombMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BombMesh"));
 	SetRootComponent(BombMesh);
-	// Movement/impact detection is trace-driven (see Tick), so mesh collision is disabled.
+	// Movement/impact detection is trace-driven (see Tick), so mesh collision is disabled
 	BombMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BombMesh->SetGenerateOverlapEvents(false);
 }
@@ -32,6 +32,7 @@ void AOmuriceBomb::BeginPlay()
 	}
 }
 
+// TODO: probably rely on gravity? it was easier to do the whole ignoring like this
 void AOmuriceBomb::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -58,7 +59,7 @@ void AOmuriceBomb::Tick(float DeltaTime)
 		QueryParams.AddIgnoredActor(OwnerActor);
 	}
 	
-	// Ground-only detection: bomb passes through pawns and only impacts valid ground.
+	// bomb ignores everything but ground hit (GroundOnly)
 	FHitResult GroundHit;
 	const bool bHitGround = World->LineTraceSingleByChannel(
 		GroundHit,
@@ -76,7 +77,7 @@ void AOmuriceBomb::Tick(float DeltaTime)
 		return;
 	}
 
-	// No valid impact this frame, keep falling.
+	// No valid impact this frame, keep falling
 	SetActorLocation(End, false);
 }
 

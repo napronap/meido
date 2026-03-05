@@ -68,14 +68,13 @@ bool UDashComponent::TryDash(const FVector2D& MoveInput, const FRotator& Control
 
 	if (bLockOnActive)
 	{
-		// Lock-on: dash direction follows input (including diagonals).
+		// Lockon: dash direction follows input
 		DashWorldDirection = ComputeDashWorldDirection(MoveInput, ControlRotation);
 		DashAnimDirection = ComputeDashAnimDirection(DashWorldDirection, ControlRotation);
 	}
 	else
 	{
-		// Free mode: dash follows movement input, but character rotates to face dash
-		// direction so the dash anim can stay "forward".
+		// Non lockon mode: dash follows movement input, but character rotates to face dash direction (like normal movement)
 		DashWorldDirection = ComputeDashWorldDirection(MoveInput, ControlRotation);
 		if (DashWorldDirection.IsNearlyZero())
 		{

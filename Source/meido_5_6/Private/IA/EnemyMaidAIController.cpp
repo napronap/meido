@@ -35,7 +35,8 @@ void AEnemyMaidAIController::OnPossess(APawn* InPawn)
 	NextTargetRefreshTime = 0.f;
 	UpdateTarget();
 
-	// AI is flow-driven by the player controller. Do not auto-start here.
+	// AI is flow driven by the player controller
+	// TODO: probably come up with  a more robust approach, this is only for the demo infinite loop
 	if (bAIEnabled)
 	{
 		SetAIEnabled(true);

@@ -36,15 +36,6 @@ void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 		Overlaps
 	);
 
-	// FString Message1 = FString::Printf(
-	// 	TEXT("Overlaps found: %d"), Overlaps.Num());
-	//
-	// GEngine->AddOnScreenDebugMessage(
-	// 	-1, 1.5f, FColor::Yellow, Message1
-	// );
-
-	UE_LOG(LogTemp, Warning, TEXT("Overlaps found: %d"), Overlaps.Num());
-
 	for (AActor* Actor : Overlaps)
 	{
 		if (!Actor) continue;
@@ -58,14 +49,6 @@ void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 				OutTargets.Add(Actor);
 			}
 		}
-
-		// FString Message2 = FString::Printf(
-		// 	TEXT("Overlap: %s, ImplementsTargetable=%d"), *GetNameSafe(Actor),
-		// 	Actor && Actor->Implements<UTargetable>());
-		//
-		// GEngine->AddOnScreenDebugMessage(
-		// 	-1, 1.5f, FColor::Yellow, Message2
-		// );
 	}
 }
 

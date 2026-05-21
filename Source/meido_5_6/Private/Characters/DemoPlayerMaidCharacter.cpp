@@ -1,20 +1,20 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "Characters/PlayerMaidCharacter.h"
+#include "Characters/DemoPlayerMaidCharacter.h"
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
-#include "PlayerControllers/MaidPlayerController.h"
+#include "PlayerControllers/DemoMaidPlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Interfaces/Targetable.h"
 
-APlayerMaidCharacter::APlayerMaidCharacter()
+ADemoPlayerMaidCharacter::ADemoPlayerMaidCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -38,7 +38,7 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	DeathLifeSpanSeconds = 0.f;
 }
 
-void APlayerMaidCharacter::BeginPlay()
+void ADemoPlayerMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
@@ -47,7 +47,7 @@ void APlayerMaidCharacter::BeginPlay()
 		return;
 	}
 
-	if (const AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
+	if (const ADemoMaidPlayerController* MaidPC = Cast<ADemoMaidPlayerController>(GetController()))
 	{
 		if (MaidPC->GetFlowState() == EFlowState::MainMenu)
 		{
@@ -59,7 +59,7 @@ void APlayerMaidCharacter::BeginPlay()
 	ApplyMenuCameraPose();
 }
 
-void APlayerMaidCharacter::ResetForFlowRestart()
+void ADemoPlayerMaidCharacter::ResetForFlowRestart()
 {
 	Super::ResetForFlowRestart();
 
@@ -79,7 +79,7 @@ void APlayerMaidCharacter::ResetForFlowRestart()
 	}
 }
 
-void APlayerMaidCharacter::Tick(float DeltaTime)
+void ADemoPlayerMaidCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
@@ -106,7 +106,7 @@ void APlayerMaidCharacter::Tick(float DeltaTime)
 	GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Red, Message);
 }
 
-void APlayerMaidCharacter::ApplyMenuCameraPose()
+void ADemoPlayerMaidCharacter::ApplyMenuCameraPose()
 {
 	if (!CameraBoom)
 	{
@@ -134,7 +134,7 @@ void APlayerMaidCharacter::ApplyMenuCameraPose()
 	LocalController->SetControlRotation(MenuRot);
 }
 
-void APlayerMaidCharacter::StartMenuCameraTransitionToGameplay()
+void ADemoPlayerMaidCharacter::StartMenuCameraTransitionToGameplay()
 {
 	AController* LocalController = Controller;
 	if (!LocalController)
@@ -162,7 +162,7 @@ void APlayerMaidCharacter::StartMenuCameraTransitionToGameplay()
 	);
 }
 
-void APlayerMaidCharacter::UpdateMenuCameraTransition(const float DeltaTime)
+void ADemoPlayerMaidCharacter::UpdateMenuCameraTransition(const float DeltaTime)
 {
 	if (!bMenuCameraTransitionActive)
 	{
@@ -201,13 +201,13 @@ void APlayerMaidCharacter::UpdateMenuCameraTransition(const float DeltaTime)
 	}
 
 	bMenuCameraTransitionActive = false;
-	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
+	if (ADemoMaidPlayerController* MaidPC = Cast<ADemoMaidPlayerController>(LocalController))
 	{
 		MaidPC->CompleteStartGameFromMenu();
 	}
 }
 
-void APlayerMaidCharacter::StartWinSequenceCameraTransition()
+void ADemoPlayerMaidCharacter::StartWinSequenceCameraTransition()
 {
 	AController* LocalController = Controller;
 	if (!LocalController)
@@ -253,7 +253,7 @@ void APlayerMaidCharacter::StartWinSequenceCameraTransition()
 	);
 }
 
-void APlayerMaidCharacter::StartLoseSequenceCameraTransition()
+void ADemoPlayerMaidCharacter::StartLoseSequenceCameraTransition()
 {
 	AController* LocalController = Controller;
 	if (!LocalController)
@@ -287,7 +287,7 @@ void APlayerMaidCharacter::StartLoseSequenceCameraTransition()
 	);
 }
 
-void APlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
+void ADemoPlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
 {
 	if (!bWinSequenceActive)
 	{
@@ -303,7 +303,7 @@ void APlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
 	if (!LocalController || !CameraBoom)
 	{
 		bWinSequenceActive = false;
-		if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
+		if (ADemoMaidPlayerController* MaidPC = Cast<ADemoMaidPlayerController>(GetController()))
 		{
 			MaidPC->CompleteWinSequence();
 		}
@@ -329,13 +329,13 @@ void APlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
 	}
 
 	bWinSequenceActive = false;
-	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
+	if (ADemoMaidPlayerController* MaidPC = Cast<ADemoMaidPlayerController>(LocalController))
 	{
 		MaidPC->CompleteWinSequence();
 	}
 }
 
-void APlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
+void ADemoPlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
 {
 	if (!bLoseSequenceActive)
 	{
@@ -351,7 +351,7 @@ void APlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
 	if (!LocalController || !CameraBoom)
 	{
 		bLoseSequenceActive = false;
-		if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
+		if (ADemoMaidPlayerController* MaidPC = Cast<ADemoMaidPlayerController>(GetController()))
 		{
 			MaidPC->CompleteLoseSequence();
 		}
@@ -377,14 +377,14 @@ void APlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
 	}
 
 	bLoseSequenceActive = false;
-	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
+	if (ADemoMaidPlayerController* MaidPC = Cast<ADemoMaidPlayerController>(LocalController))
 	{
 		MaidPC->CompleteLoseSequence();
 	}
 }
 
 
-void APlayerMaidCharacter::Move(const FInputActionValue& Value)
+void ADemoPlayerMaidCharacter::Move(const FInputActionValue& Value)
 {
 	const FVector2D MovementVector = Value.Get<FVector2D>();
 	CachedMoveInput = MovementVector;
@@ -392,7 +392,7 @@ void APlayerMaidCharacter::Move(const FInputActionValue& Value)
 	DoMove(MovementVector.X, MovementVector.Y);
 }
 
-void APlayerMaidCharacter::Look(const FInputActionValue& Value)
+void ADemoPlayerMaidCharacter::Look(const FInputActionValue& Value)
 {
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
 
@@ -404,17 +404,17 @@ void APlayerMaidCharacter::Look(const FInputActionValue& Value)
 	DoLook(YawInput, LookAxisVector.Y);
 }
 
-void APlayerMaidCharacter::JumpPressed()
+void ADemoPlayerMaidCharacter::JumpPressed()
 {
 	Jump();
 }
 
-void APlayerMaidCharacter::JumpReleased()
+void ADemoPlayerMaidCharacter::JumpReleased()
 {
 	StopJumping();
 }
 
-void APlayerMaidCharacter::DashPressed()
+void ADemoPlayerMaidCharacter::DashPressed()
 {
 	if (!DashComponent)
 	{
@@ -426,28 +426,28 @@ void APlayerMaidCharacter::DashPressed()
 	DashComponent->TryDash(CachedMoveInput, ControlRotation, bLockOnActive);
 }
 
-void APlayerMaidCharacter::ComboAttackPressed()
+void ADemoPlayerMaidCharacter::ComboAttackPressed()
 {
 	DoStartComboAttack();
 }
 
-void APlayerMaidCharacter::InputMeiDouM()
+void ADemoPlayerMaidCharacter::InputMeiDouM()
 {
 	RegisterMeiDouInput(EMeiDouInput::EMDI_Moe);
 }
 
-void APlayerMaidCharacter::InputMeiDouK()
+void ADemoPlayerMaidCharacter::InputMeiDouK()
 {
 	RegisterMeiDouInput(EMeiDouInput::EMDI_Kyun);
 }
 
-void APlayerMaidCharacter::InputMeiDouN()
+void ADemoPlayerMaidCharacter::InputMeiDouN()
 {
 	RegisterMeiDouInput(EMeiDouInput::EMDI_Nyan);
 }
 
 
-void APlayerMaidCharacter::ToggleLockOn()
+void ADemoPlayerMaidCharacter::ToggleLockOn()
 {
 	if (!LockOnComponent) return;
 
@@ -475,7 +475,7 @@ void APlayerMaidCharacter::ToggleLockOn()
 	}
 }
 
-void APlayerMaidCharacter::OnLockOnSwitch(const FInputActionValue& Value)
+void ADemoPlayerMaidCharacter::OnLockOnSwitch(const FInputActionValue& Value)
 {
 	if (!LockOnComponent) return;
 	const float Axis = Value.Get<float>();
@@ -492,13 +492,13 @@ void APlayerMaidCharacter::OnLockOnSwitch(const FInputActionValue& Value)
 	LockOnComponent->HandleSwitchInput(Axis);
 }
 
-void APlayerMaidCharacter::OnLockOnSwitchReleased(const FInputActionValue& Value)
+void ADemoPlayerMaidCharacter::OnLockOnSwitchReleased(const FInputActionValue& Value)
 {
 	if (!LockOnComponent) return;
 	LockOnComponent->HandleSwitchReleased();
 }
 
-void APlayerMaidCharacter::ApplyLockOnMovementMode(bool bLockOnActive)
+void ADemoPlayerMaidCharacter::ApplyLockOnMovementMode(bool bLockOnActive)
 {
 	if (bWasLockOnActive == bLockOnActive)
 	{
@@ -519,7 +519,7 @@ void APlayerMaidCharacter::ApplyLockOnMovementMode(bool bLockOnActive)
 	}
 }
 
-void APlayerMaidCharacter::UpdateAnimLockOnState(bool bLockOnActive)
+void ADemoPlayerMaidCharacter::UpdateAnimLockOnState(bool bLockOnActive)
 {
 	if (!GetMesh())
 	{
@@ -532,7 +532,7 @@ void APlayerMaidCharacter::UpdateAnimLockOnState(bool bLockOnActive)
 	}
 }
 
-void APlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
+void ADemoPlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
 {
 	if (!Controller || !ViewCamera)
 	{
@@ -573,36 +573,36 @@ void APlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
 	Controller->SetControlRotation(NewRotation);
 }
 
-void APlayerMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+void ADemoPlayerMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// movement related actions
-		EnhancedInputComponent->BindAction(MovementAction, ETriggerEvent::Triggered, this, &APlayerMaidCharacter::Move);
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APlayerMaidCharacter::Look);
+		EnhancedInputComponent->BindAction(MovementAction, ETriggerEvent::Triggered, this, &ADemoPlayerMaidCharacter::Move);
+		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADemoPlayerMaidCharacter::Look);
 
 		// combat related actions
 		EnhancedInputComponent->BindAction(ComboAttackAction, ETriggerEvent::Started, this,
-		                                   &APlayerMaidCharacter::ComboAttackPressed);
+		                                   &ADemoPlayerMaidCharacter::ComboAttackPressed);
 
 		// override inherited jump actions
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::JumpPressed);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &APlayerMaidCharacter::JumpReleased);
-		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::DashPressed);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ADemoPlayerMaidCharacter::JumpPressed);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ADemoPlayerMaidCharacter::JumpReleased);
+		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ADemoPlayerMaidCharacter::DashPressed);
 
 		// mei dou related actions
-		EnhancedInputComponent->BindAction(MeiDouMAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::InputMeiDouM);
-		EnhancedInputComponent->BindAction(MeiDouKAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::InputMeiDouK);
-		EnhancedInputComponent->BindAction(MeiDouNAction, ETriggerEvent::Started, this, &APlayerMaidCharacter::InputMeiDouN);
+		EnhancedInputComponent->BindAction(MeiDouMAction, ETriggerEvent::Started, this, &ADemoPlayerMaidCharacter::InputMeiDouM);
+		EnhancedInputComponent->BindAction(MeiDouKAction, ETriggerEvent::Started, this, &ADemoPlayerMaidCharacter::InputMeiDouK);
+		EnhancedInputComponent->BindAction(MeiDouNAction, ETriggerEvent::Started, this, &ADemoPlayerMaidCharacter::InputMeiDouN);
 
 		// lock on actions
 		EnhancedInputComponent->BindAction(LockOnInputAction, ETriggerEvent::Started, this,
-		                                   &APlayerMaidCharacter::ToggleLockOn);
+		                                   &ADemoPlayerMaidCharacter::ToggleLockOn);
 		EnhancedInputComponent->BindAction(ChangeLockOnInputAction, ETriggerEvent::Started, this,
-		                                   &APlayerMaidCharacter::OnLockOnSwitch);
+		                                   &ADemoPlayerMaidCharacter::OnLockOnSwitch);
 		EnhancedInputComponent->BindAction(ChangeLockOnInputAction, ETriggerEvent::Completed, this,
-		                                   &APlayerMaidCharacter::OnLockOnSwitchReleased);
+		                                   &ADemoPlayerMaidCharacter::OnLockOnSwitchReleased);
 	}
 }

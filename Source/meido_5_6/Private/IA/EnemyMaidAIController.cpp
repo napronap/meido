@@ -35,8 +35,7 @@ void AEnemyMaidAIController::OnPossess(APawn* InPawn)
 	NextTargetRefreshTime = 0.f;
 	UpdateTarget();
 
-	// AI is flow driven by the player controller
-	// TODO: probably come up with  a more robust approach, this is only for the demo infinite loop
+	// Start BT if enabled (default true for playground). Demo PC still gates via SetAIEnabled.
 	if (bAIEnabled)
 	{
 		SetAIEnabled(true);

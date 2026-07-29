@@ -60,7 +60,9 @@ private:
 	TWeakObjectPtr<APawn> CurrentTargetPawn;
 	float NextTargetRefreshTime = 0.f;
 	bool bHasAttackSlot = false;
-	bool bAIEnabled = false;
+	// Default on so playground spawn fights without Demo flow. Demo still disables in menu/pause/win/lose.
+	// TODO: reassess with proper AI/flow ownership
+	bool bAIEnabled = true;
 
 	void UpdateTarget();
 	void ReleaseAttackSlot();

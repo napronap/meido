@@ -4,12 +4,12 @@
 #include "ActorComponents/MeiDouComponent.h"
 #include "MeiDouPoseDataAsset.h"
 #include "GameFramework/Character.h"
-#include "Types/CharacterTypes.h"
 #include "Interfaces/ComboAttacker.h"
 #include "Types/MeiDouTypes.h"
 #include "MaidCharacter.generated.h"
 
 class UAttackComponent;
+class UCharacterStateComponent;
 class UDashComponent;
 class UHealthComponent;
 class ULockOnComponent;
@@ -50,10 +50,18 @@ protected:
 	virtual void StopJumping() override;
 
 	/*
-	 * State
+	 * State — authoritative posture is CharacterStateComponent (CP0.2+).
+	 * Apply* helpers write component slices only (CP0.3: no ECharacterState dual-write).
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State")
-	ECharacterState CharacterState = ECharacterState::ECS_Idle;
+	void ApplyGameplayStateIdle();
+	void ApplyGameplayStateAttacking();
+	void ApplyGameplayStateWhiffRecover();
+	void ApplyGameplayStateStagger();
+	void ApplyGameplayStateJumping();
+	void ApplyGameplayStateDashing();
+	void ApplyGameplayStateMeiDouActive();
+	void ApplyGameplayStateMeiDouFailed();
+	void ApplyGameplayStateDead();
 
 	/*
 	 * Combat
@@ -67,6 +75,9 @@ protected:
 	int32 ComboIndex = 0;
 	int32 ComboCount = 0;
 	float CachedAttackInputTime = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State")
+	UCharacterStateComponent* CharacterStateComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	UAttackComponent* AttackComponent;
@@ -173,9 +184,11 @@ public:
 	bool CanStartDash() const;
 	void NotifyDashStarted();
 	void NotifyDashEnded();
-	ECharacterState GetCharacterState() const;
 	bool IsDead() const;
 	virtual void ResetForFlowRestart();
+
+	UFUNCTION(BlueprintPure, Category = "State")
+	UCharacterStateComponent* GetCharacterStateComponent() const { return CharacterStateComponent; }
 
 protected:
 	void GrantIFrames(float DurationSeconds);

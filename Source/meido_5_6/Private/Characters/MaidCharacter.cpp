@@ -4,6 +4,7 @@
 #include "Characters/MaidCharacter.h"
 #include "Components/InputComponent.h"
 #include "ActorComponents/AttackComponent.h"
+#include "ActorComponents/CharacterStateComponent.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/HealthComponent.h"
 #include "ActorComponents/LockOnComponent.h"
@@ -48,12 +49,20 @@ AMaidCharacter::AMaidCharacter()
 	OnAttackMontageEnded.BindUObject(this, &AMaidCharacter::AttackMontageEnded);
 	OnDamageMontageEnded.BindUObject(this, &AMaidCharacter::DamageMontageEnded);
 	OnMeiDouFailMontageEnded.BindUObject(this, &AMaidCharacter::MeiDouFailMontageEnded);
+
+	// CP0.1: layered state scaffold (gates migrate in CP0.2)
+	CharacterStateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("CharacterStateComponent"));
 }
 
 // Called when the game starts or when spawned
 void AMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (!CharacterStateComponent)
+	{
+		CharacterStateComponent = FindComponentByClass<UCharacterStateComponent>();
+	}
 
 	AttackComponent = FindComponentByClass<UAttackComponent>();
 	DashComponent = FindComponentByClass<UDashComponent>();
@@ -97,6 +106,117 @@ void AMaidCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
+void AMaidCharacter::ApplyGameplayStateIdle()
+{
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::None);
+	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Idle);
+	if (CharacterStateComponent->GetHealthState() == EHealthActionState::Stagger)
+	{
+		CharacterStateComponent->SetHealthState(EHealthActionState::Alive);
+	}
+	if (CharacterStateComponent->GetLocomotionState() == ELocomotionState::Jump
+		|| CharacterStateComponent->GetLocomotionState() == ELocomotionState::Dash)
+	{
+		CharacterStateComponent->SetLocomotionState(ELocomotionState::Grounded);
+	}
+}
+
+void AMaidCharacter::ApplyGameplayStateAttacking()
+{
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::InSwing);
+}
+
+void AMaidCharacter::ApplyGameplayStateWhiffRecover()
+{
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::WhiffRecover);
+}
+
+void AMaidCharacter::ApplyGameplayStateStagger()
+{
+	bDamageReactionActive = true;
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::None);
+	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Idle);
+	CharacterStateComponent->SetLocomotionState(ELocomotionState::Grounded);
+	CharacterStateComponent->SetHealthState(EHealthActionState::Stagger);
+}
+
+void AMaidCharacter::ApplyGameplayStateJumping()
+{
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetLocomotionState(ELocomotionState::Jump);
+}
+
+void AMaidCharacter::ApplyGameplayStateDashing()
+{
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::None);
+	CharacterStateComponent->SetLocomotionState(ELocomotionState::Dash);
+}
+
+void AMaidCharacter::ApplyGameplayStateMeiDouActive()
+{
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::None);
+	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Active);
+}
+
+void AMaidCharacter::ApplyGameplayStateMeiDouFailed()
+{
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::None);
+	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Failed);
+}
+
+void AMaidCharacter::ApplyGameplayStateDead()
+{
+	bDamageReactionActive = false;
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	CharacterStateComponent->SetAttackState(EAttackState::None);
+	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Idle);
+	CharacterStateComponent->SetLocomotionState(ELocomotionState::Grounded);
+	CharacterStateComponent->SetHealthState(EHealthActionState::Dead);
+}
+
 float AMaidCharacter::TakeDamage(
 	float DamageAmount,
 	FDamageEvent const& DamageEvent,
@@ -109,7 +229,8 @@ float AMaidCharacter::TakeDamage(
 		return 0.f;
 	}
 
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	if (CharacterStateComponent
+		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
 	{
 		return 0.f;
 	}
@@ -124,9 +245,8 @@ float AMaidCharacter::TakeDamage(
 
 void AMaidCharacter::DoMove(float Right, float Forward)
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
-		CharacterState == ECharacterState::ECS_Dashing ||
-		CharacterState == ECharacterState::ECS_MeiDouFailed)
+	if (CharacterStateComponent
+		&& (CharacterStateComponent->IsMeiDouLocked() || CharacterStateComponent->IsDashing()))
 	{
 		return;
 	}
@@ -155,24 +275,30 @@ void AMaidCharacter::DoMove(float Right, float Forward)
 
 void AMaidCharacter::Jump()
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	if (CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
 	{
 		return;
 	}
 
 	// only jump in idle, so we don't have weird behavior of jumping while character is playing the attack montage
-	if (CharacterState == ECharacterState::ECS_Idle)
+	if (CharacterStateComponent->GetOverall() == ECharacterOverallState::Idle)
 	{
-		CharacterState = ECharacterState::ECS_Jumping;
+		ApplyGameplayStateJumping();
 		Super::Jump();
 	}
 }
 
 void AMaidCharacter::StopJumping()
 {
-	if (CharacterState == ECharacterState::ECS_Jumping)
+	if (CharacterStateComponent
+		&& CharacterStateComponent->GetLocomotionState() == ELocomotionState::Jump)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 	}
 
 	Super::StopJumping();
@@ -191,7 +317,8 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 		return false;
 	}
 
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	if (CharacterStateComponent
+		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
 	{
 		return false;
 	}
@@ -205,11 +332,16 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 
 void AMaidCharacter::DoStartComboAttack()
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
-		CharacterState == ECharacterState::ECS_Recovering ||
-		CharacterState == ECharacterState::ECS_Dashing ||
-		CharacterState == ECharacterState::ECS_MeiDouFailed ||
-		bDamageReactionActive)
+	if (!CharacterStateComponent)
+	{
+		return;
+	}
+
+	if (CharacterStateComponent->IsMeiDouLocked()
+		|| CharacterStateComponent->IsDashing()
+		|| CharacterStateComponent->IsStaggered()
+		|| CharacterStateComponent->GetAttackState() == EAttackState::WhiffRecover
+		|| bDamageReactionActive)
 	{
 		return;
 	}
@@ -229,7 +361,9 @@ void AMaidCharacter::DoStartComboAttack()
 	if (!GetCharacterMovement()->IsFalling())
 	{
 		// if we are currently attacking, register this attack
-		if (CharacterState == ECharacterState::ECS_Attacking)
+		const bool bAttacking = CharacterStateComponent->IsAttacking()
+			&& CharacterStateComponent->GetAttackState() != EAttackState::WhiffRecover;
+		if (bAttacking)
 		{
 			CachedAttackInputTime = GetWorld()->GetTimeSeconds();
 
@@ -244,12 +378,12 @@ void AMaidCharacter::DoContinueCombo()
 {
 	if (!AttackComponent || !ComboAttackMontage)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 		return;
 	}
 
 	AttackComponent->StartAttack();
-	CharacterState = ECharacterState::ECS_Attacking;
+	ApplyGameplayStateAttacking();
 
 	ComboCount = 0;
 
@@ -265,23 +399,27 @@ void AMaidCharacter::DoContinueCombo()
 		}
 		else
 		{
-			CharacterState = ECharacterState::ECS_Idle;
+			ApplyGameplayStateIdle();
 		}
 	}
 	else
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 	}
 }
 
 void AMaidCharacter::CheckCombo_Implementation()
 {
-	if (CharacterState == ECharacterState::ECS_Attacking)
+	const bool bAttacking = CharacterStateComponent
+		&& CharacterStateComponent->IsAttacking()
+		&& CharacterStateComponent->GetAttackState() != EAttackState::WhiffRecover;
+
+	if (bAttacking)
 	{
 		// if there were no inputs since our last input, don't continue the combo and enter recovery mode
 		if (CachedAttackInputTime <= 0.f)
 		{
-			CharacterState = ECharacterState::ECS_Recovering;
+			ApplyGameplayStateWhiffRecover();
 			return;
 		}
 
@@ -318,7 +456,8 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	ComboCount = 0;
 	CachedAttackInputTime = 0.f;
 
-	if (CharacterState == ECharacterState::ECS_MeiDouActive)
+	if (CharacterStateComponent
+		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active)
 	{
 		return;
 	}
@@ -327,18 +466,18 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	{
 		if (DamageMontage && AnimInstance->Montage_IsPlaying(DamageMontage))
 		{
-			CharacterState = ECharacterState::ECS_Recovering;
+			ApplyGameplayStateStagger();
 			return;
 		}
 	}
 
 	if (bDamageReactionActive)
 	{
-		CharacterState = ECharacterState::ECS_Recovering;
+		ApplyGameplayStateStagger();
 		return;
 	}
 
-	CharacterState = ECharacterState::ECS_Idle;
+	ApplyGameplayStateIdle();
 }
 
 void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -355,9 +494,11 @@ void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted
 		return;
 	}
 
-	if (CharacterState != ECharacterState::ECS_MeiDouActive)
+	const bool bMeiDouActive = CharacterStateComponent
+		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active;
+	if (!bMeiDouActive)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 	}
 }
 
@@ -368,9 +509,10 @@ void AMaidCharacter::MeiDouFailMontageEnded(UAnimMontage* Montage, bool bInterru
 		return;
 	}
 
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	if (CharacterStateComponent
+		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 	}
 }
 
@@ -411,15 +553,14 @@ void AMaidCharacter::HandleDamageTaken(
 	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
 	if (!AnimInstance)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 		return;
 	}
 
 	// Damage reactions should interrupt any ongoing action montage.
 	AnimInstance->Montage_Stop(0.05f);
 
-	CharacterState = ECharacterState::ECS_Recovering;
-	bDamageReactionActive = true;
+	ApplyGameplayStateStagger();
 
 	if (IsPlayerControlled())
 	{
@@ -451,7 +592,7 @@ void AMaidCharacter::HandleDamageTaken(
 	}
 
 	bDamageReactionActive = false;
-	CharacterState = ECharacterState::ECS_Idle;
+	ApplyGameplayStateIdle();
 }
 
 void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser)
@@ -479,8 +620,7 @@ void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, A
 		EnemyAIController->SetAIEnabled(false);
 	}
 
-	CharacterState = ECharacterState::ECS_Recovering;
-	bDamageReactionActive = false;
+	ApplyGameplayStateDead();
 
 	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
 	{
@@ -510,9 +650,11 @@ void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 		return;
 	}
 
-	if ((CharacterState != ECharacterState::ECS_Idle &&
-		CharacterState != ECharacterState::ECS_MeiDouActive) ||
-		GetCharacterMovement()->IsFalling())
+	const bool bMeiDouGateOk = CharacterStateComponent
+		&& (CharacterStateComponent->GetOverall() == ECharacterOverallState::Idle
+			|| CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active);
+
+	if (!bMeiDouGateOk || GetCharacterMovement()->IsFalling())
 	{
 		return;
 	}
@@ -636,11 +778,11 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 		MovementComponent->StopMovementImmediately();
 	}
 
-	CharacterState = ECharacterState::ECS_MeiDouFailed;
+	ApplyGameplayStateMeiDouFailed();
 
 	if (!MeiDouFailMontage)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
 	}
@@ -648,7 +790,7 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 	const float MontageLength = PlayAnimMontage(MeiDouFailMontage, 1.f);
 	if (MontageLength <= 0.f)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 		UE_LOG(
 			LogTemp,
 			Warning,
@@ -683,14 +825,15 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 	{
 		SetMeiDouMirrorFlag(GetMesh(), false);
 
-		if (CharacterState == ECharacterState::ECS_MeiDouActive)
+		if (CharacterStateComponent
+			&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active)
 		{
-			CharacterState = ECharacterState::ECS_Idle;
+			ApplyGameplayStateIdle();
 		}
 		return;
 	}
 
-	CharacterState = ECharacterState::ECS_MeiDouActive;
+	ApplyGameplayStateMeiDouActive();
 	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
 		MovementComponent->StopMovementImmediately();
@@ -699,18 +842,12 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 
 bool AMaidCharacter::CanStartDash() const
 {
-	if (bHasDied)
+	if (bHasDied || !CharacterStateComponent)
 	{
 		return false;
 	}
 
-	switch (CharacterState)
-	{
-	case ECharacterState::ECS_Idle:
-		return true;
-	default:
-		return false;
-	}
+	return CharacterStateComponent->GetOverall() == ECharacterOverallState::Idle;
 }
 
 void AMaidCharacter::NotifyDashStarted()
@@ -725,7 +862,7 @@ void AMaidCharacter::NotifyDashStarted()
 		AttackComponent->CloseHitWindow();
 	}
 
-	CharacterState = ECharacterState::ECS_Dashing;
+	ApplyGameplayStateDashing();
 
 	if (IsPlayerControlled())
 	{
@@ -740,15 +877,10 @@ void AMaidCharacter::NotifyDashEnded()
 		return;
 	}
 
-	if (CharacterState == ECharacterState::ECS_Dashing)
+	if (CharacterStateComponent && CharacterStateComponent->IsDashing())
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		ApplyGameplayStateIdle();
 	}
-}
-
-ECharacterState AMaidCharacter::GetCharacterState() const
-{
-	return CharacterState;
 }
 
 bool AMaidCharacter::IsDead() const
@@ -769,7 +901,11 @@ void AMaidCharacter::ResetForFlowRestart()
 	ComboCount = 0;
 	CachedAttackInputTime = 0.f;
 	NextDamageSectionIndex = 0;
-	CharacterState = ECharacterState::ECS_Idle;
+
+	if (CharacterStateComponent)
+	{
+		CharacterStateComponent->ResetToDefaults();
+	}
 
 	SetLifeSpan(0.f);
 

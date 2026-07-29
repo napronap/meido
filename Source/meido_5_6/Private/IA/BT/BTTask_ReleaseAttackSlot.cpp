@@ -1,7 +1,28 @@
 #include "IA/BT/BTTask_ReleaseAttackSlot.h"
+#include "ActorComponents/CharacterStateComponent.h"
 #include "Characters/MaidCharacter.h"
 #include "IA/EnemyMaidAIController.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
+
+namespace
+{
+	/** Still in attack chain or hit-stun — hold the shared attack slot. */
+	bool ShouldHoldAttackSlot(const AMaidCharacter* Maid)
+	{
+		if (!Maid)
+		{
+			return false;
+		}
+
+		const UCharacterStateComponent* State = Maid->GetCharacterStateComponent();
+		if (!State)
+		{
+			return false;
+		}
+
+		return State->IsAttacking() || State->IsStaggered();
+	}
+}
 
 UBTTask_ReleaseAttackSlot::UBTTask_ReleaseAttackSlot()
 {
@@ -19,14 +40,10 @@ EBTNodeResult::Type UBTTask_ReleaseAttackSlot::ExecuteTask(UBehaviorTreeComponen
 
 	if (bWaitForIdleBeforeRelease)
 	{
-		AMaidCharacter* Maid = Cast<AMaidCharacter>(AIController->GetPawn());
-		if (Maid)
+		const AMaidCharacter* Maid = Cast<AMaidCharacter>(AIController->GetPawn());
+		if (ShouldHoldAttackSlot(Maid))
 		{
-			const ECharacterState State = Maid->GetCharacterState();
-			if (State == ECharacterState::ECS_Attacking || State == ECharacterState::ECS_Recovering)
-			{
-				return EBTNodeResult::InProgress;
-			}
+			return EBTNodeResult::InProgress;
 		}
 	}
 
@@ -45,14 +62,10 @@ void UBTTask_ReleaseAttackSlot::TickTask(UBehaviorTreeComponent& OwnerComp, uint
 
 	if (bWaitForIdleBeforeRelease)
 	{
-		AMaidCharacter* Maid = Cast<AMaidCharacter>(AIController->GetPawn());
-		if (Maid)
+		const AMaidCharacter* Maid = Cast<AMaidCharacter>(AIController->GetPawn());
+		if (ShouldHoldAttackSlot(Maid))
 		{
-			const ECharacterState State = Maid->GetCharacterState();
-			if (State == ECharacterState::ECS_Attacking || State == ECharacterState::ECS_Recovering)
-			{
-				return;
-			}
+			return;
 		}
 	}
 

@@ -1,5 +1,11 @@
-﻿#pragma once
+#pragma once
 
+/**
+ * Legacy monolithic character posture enum.
+ * Runtime C++ no longer uses this after CP0.3 (CharacterStateComponent + StateTypes.h).
+ * Kept only so old Blueprint pins / assets do not hard-break; safe to delete after BP audit.
+ * See docs/POST_REFACTOR_NOTES.md and docs/code-units/ECharacterState.md.
+ */
 UENUM(BlueprintType)
 enum class ECharacterState : uint8
 {

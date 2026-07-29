@@ -1,8 +1,24 @@
 #include "IA/BT/BTTask_StartComboAttack.h"
+#include "ActorComponents/CharacterStateComponent.h"
 #include "Characters/MaidCharacter.h"
 #include "AIController.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
 #include "IA/EnemyMaidAIController.h"
+#include "Types/StateTypes.h"
+
+namespace
+{
+	bool IsInActiveComboAttack(const UCharacterStateComponent* State)
+	{
+		if (!State || !State->IsAttacking())
+		{
+			return false;
+		}
+
+		// Whiff recover is still "attack slice" but AI should not treat it as a live combo.
+		return State->GetAttackState() != EAttackState::WhiffRecover;
+	}
+}
 
 UBTTask_StartComboAttack::UBTTask_StartComboAttack()
 {
@@ -23,10 +39,12 @@ EBTNodeResult::Type UBTTask_StartComboAttack::ExecuteTask(UBehaviorTreeComponent
 		return EBTNodeResult::Failed;
 	}
 
-	const ECharacterState PreviousState = Maid->GetCharacterState();
+	const UCharacterStateComponent* State = Maid->GetCharacterStateComponent();
+	const bool bWasAttacking = IsInActiveComboAttack(State);
 	Maid->DoStartComboAttack();
+	const bool bNowAttacking = IsInActiveComboAttack(Maid->GetCharacterStateComponent());
 
-	return (Maid->GetCharacterState() == ECharacterState::ECS_Attacking || PreviousState == ECharacterState::ECS_Attacking)
+	return (bNowAttacking || bWasAttacking)
 		? EBTNodeResult::Succeeded
 		: EBTNodeResult::Failed;
 }

@@ -4,6 +4,7 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "ActorComponents/CharacterStateComponent.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
@@ -36,6 +37,12 @@ ADemoPlayerMaidCharacter::ADemoPlayerMaidCharacter()
 	// Player should remain in scene on death for lose flow/camera
 	// (different from enemy maid that uses this to despawn)
 	DeathLifeSpanSeconds = 0.f;
+
+	// CP0.1 smoke: on-screen Overall / Attack / Health
+	if (CharacterStateComponent)
+	{
+		CharacterStateComponent->bDrawDebugState = true;
+	}
 }
 
 void ADemoPlayerMaidCharacter::BeginPlay()
@@ -100,10 +107,20 @@ void ADemoPlayerMaidCharacter::Tick(float DeltaTime)
 		}
 	}
 
-	const UEnum* EnumPtr = StaticEnum<ECharacterState>();
-	FString Message = FString::Printf(
-		TEXT("Character State: %s"), *EnumPtr->GetNameStringByValue(static_cast<int64>(CharacterState)));
-	GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Red, Message);
+	// Fallback debug if CharacterStateComponent on-screen is off; prefer component Overall.
+	if (CharacterStateComponent)
+	{
+		const UEnum* OverallEnum = StaticEnum<ECharacterOverallState>();
+		const FString OverallStr = OverallEnum
+			? OverallEnum->GetNameStringByValue(static_cast<int64>(CharacterStateComponent->GetOverall()))
+			: TEXT("?");
+		GEngine->AddOnScreenDebugMessage(
+			1,
+			0.f,
+			FColor::Red,
+			FString::Printf(TEXT("Overall: %s"), *OverallStr)
+		);
+	}
 }
 
 void ADemoPlayerMaidCharacter::ApplyMenuCameraPose()

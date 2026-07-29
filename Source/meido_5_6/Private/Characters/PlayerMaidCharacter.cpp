@@ -4,6 +4,7 @@
 #include "Characters/PlayerMaidCharacter.h"
 
 #include "EnhancedInputComponent.h"
+#include "ActorComponents/CharacterStateComponent.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
@@ -30,6 +31,12 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>("ViewCamera");
 	ViewCamera->SetupAttachment(CameraBoom);
+
+	// CP0.1 smoke: on-screen Overall / Attack / Health (disable on component if noisy)
+	if (CharacterStateComponent)
+	{
+		CharacterStateComponent->bDrawDebugState = true;
+	}
 }
 
 void APlayerMaidCharacter::BeginPlay()

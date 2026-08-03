@@ -58,6 +58,7 @@ AMaidCharacter::AMaidCharacter()
 	CharacterStateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("CharacterStateComponent"));
 	// Native so combo montage/sections always show on the inherited component (not only BP-added Attack).
 	AttackComponent = CreateDefaultSubobject<UAttackComponent>(TEXT("AttackComponent"));
+	DashComponent = CreateDefaultSubobject<UDashComponent>(TEXT("DashComponent"));
 }
 
 // Called when the game starts or when spawned
@@ -75,8 +76,11 @@ void AMaidCharacter::BeginPlay()
 		AttackComponent = FindComponentByClass<UAttackComponent>();
 	}
 
-	// Prefer the native AttackComponent if the BP still has a second, older one.
-	DashComponent = FindComponentByClass<UDashComponent>();
+	if (!DashComponent)
+	{
+		DashComponent = FindComponentByClass<UDashComponent>();
+	}
+
 	HealthComponent = FindComponentByClass<UHealthComponent>();
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
 	LockOnComponent = FindComponentByClass<ULockOnComponent>();
@@ -845,7 +849,7 @@ bool AMaidCharacter::CanStartDash() const
 	return CharacterStateComponent->GetOverall() == ECharacterOverallState::Idle;
 }
 
-void AMaidCharacter::NotifyDashStarted()
+void AMaidCharacter::NotifyDashStarted(const bool bGrantLegacyTimedIFrames)
 {
 	if (bHasDied)
 	{
@@ -859,7 +863,8 @@ void AMaidCharacter::NotifyDashStarted()
 
 	ApplyGameplayStateDashing();
 
-	if (IsPlayerControlled())
+	// Prefer AnimNotifyState_DashIFrames on dash content; legacy timed i-frames as bridge.
+	if (bGrantLegacyTimedIFrames && IsPlayerControlled())
 	{
 		GrantIFrames(DashIFrameDuration);
 	}
@@ -867,6 +872,8 @@ void AMaidCharacter::NotifyDashStarted()
 
 void AMaidCharacter::NotifyDashEnded()
 {
+	SetIFrameOverrideActive(false);
+
 	if (bHasDied)
 	{
 		return;
@@ -876,6 +883,11 @@ void AMaidCharacter::NotifyDashEnded()
 	{
 		ApplyGameplayStateIdle();
 	}
+}
+
+void AMaidCharacter::SetIFrameOverrideActive(const bool bActive)
+{
+	bIFrameOverrideActive = bActive;
 }
 
 bool AMaidCharacter::IsDead() const
@@ -894,6 +906,7 @@ void AMaidCharacter::ResetForFlowRestart()
 	bHasDied = false;
 	bDamageReactionActive = false;
 	InvulnerableUntilTime = 0.f;
+	bIFrameOverrideActive = false;
 	NextDamageSectionIndex = 0;
 
 	if (AttackComponent)
@@ -948,6 +961,11 @@ void AMaidCharacter::GrantIFrames(const float DurationSeconds)
 
 bool AMaidCharacter::HasActiveIFrames() const
 {
+	if (bIFrameOverrideActive)
+	{
+		return true;
+	}
+
 	if (!GetWorld())
 	{
 		return false;

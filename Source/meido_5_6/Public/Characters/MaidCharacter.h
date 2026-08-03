@@ -177,6 +177,8 @@ protected:
 	/** Presentation/flow mirror of Health dead. Prefer IsDead() / HealthComponent->IsDead() for queries. */
 	bool bHasDied = false;
 	float InvulnerableUntilTime = 0.f;
+	/** While true, HasActiveIFrames ignores timer (dash notify window). */
+	bool bIFrameOverrideActive = false;
 
 	/*
 	 * lock on
@@ -186,7 +188,8 @@ protected:
 
 public:
 	bool CanStartDash() const;
-	void NotifyDashStarted();
+	/** @param bGrantLegacyTimedIFrames player timed i-frames if dash anim has no I-Frame notify yet */
+	void NotifyDashStarted(bool bGrantLegacyTimedIFrames = true);
 	void NotifyDashEnded();
 	bool IsDead() const;
 	virtual void ResetForFlowRestart();
@@ -194,7 +197,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "State")
 	UCharacterStateComponent* GetCharacterStateComponent() const { return CharacterStateComponent; }
 
-protected:
+	/** AnimNotifyState_DashIFrames — invuln while notify range is active. */
+	void SetIFrameOverrideActive(bool bActive);
+
 	void GrantIFrames(float DurationSeconds);
 	bool HasActiveIFrames() const;
 };

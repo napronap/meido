@@ -11,9 +11,14 @@
 #include "ActorComponents/MeiDouComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
 #include "Animation/AnimInstance.h"
+#include "Camera/CameraShakeBase.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
 #include "IA/EnemyMaidAIController.h"
+#include "Audio/CombatAudioData.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
+#include "Utils/CombatFeedbackSubsystem.h"
 
 namespace
 {
@@ -50,8 +55,9 @@ AMaidCharacter::AMaidCharacter()
 	OnDamageMontageEnded.BindUObject(this, &AMaidCharacter::DamageMontageEnded);
 	OnMeiDouFailMontageEnded.BindUObject(this, &AMaidCharacter::MeiDouFailMontageEnded);
 
-	// CP0.1: layered state scaffold (gates migrate in CP0.2)
 	CharacterStateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("CharacterStateComponent"));
+	// Native so combo montage/sections always show on the inherited component (not only BP-added Attack).
+	AttackComponent = CreateDefaultSubobject<UAttackComponent>(TEXT("AttackComponent"));
 }
 
 // Called when the game starts or when spawned
@@ -64,7 +70,12 @@ void AMaidCharacter::BeginPlay()
 		CharacterStateComponent = FindComponentByClass<UCharacterStateComponent>();
 	}
 
-	AttackComponent = FindComponentByClass<UAttackComponent>();
+	if (!AttackComponent)
+	{
+		AttackComponent = FindComponentByClass<UAttackComponent>();
+	}
+
+	// Prefer the native AttackComponent if the BP still has a second, older one.
 	DashComponent = FindComponentByClass<UDashComponent>();
 	HealthComponent = FindComponentByClass<UHealthComponent>();
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
@@ -224,7 +235,9 @@ float AMaidCharacter::TakeDamage(
 	AActor* DamageCauser
 )
 {
-	if (bHasDied || DamageAmount <= 0.f)
+	// Reception gates (pawn policies). HP mutation is UHealthComponent::ApplyCombatDamage
+	// via Super → OnTakeAnyDamage (CP1.2).
+	if (IsDead() || DamageAmount <= 0.f)
 	{
 		return 0.f;
 	}
@@ -332,11 +345,12 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 
 void AMaidCharacter::DoStartComboAttack()
 {
-	if (!CharacterStateComponent)
+	if (!CharacterStateComponent || !AttackComponent)
 	{
 		return;
 	}
 
+	// Gates on character; chain + hit windows on AttackComponent.
 	if (CharacterStateComponent->IsMeiDouLocked()
 		|| CharacterStateComponent->IsDashing()
 		|| CharacterStateComponent->IsStaggered()
@@ -357,93 +371,12 @@ void AMaidCharacter::DoStartComboAttack()
 		}
 	}
 
-	// only attack if we are not in the air, at least for now
-	if (!GetCharacterMovement()->IsFalling())
+	if (GetCharacterMovement()->IsFalling())
 	{
-		// if we are currently attacking, register this attack
-		const bool bAttacking = CharacterStateComponent->IsAttacking()
-			&& CharacterStateComponent->GetAttackState() != EAttackState::WhiffRecover;
-		if (bAttacking)
-		{
-			CachedAttackInputTime = GetWorld()->GetTimeSeconds();
-
-			return;
-		}
-
-		DoContinueCombo();
-	}
-}
-
-void AMaidCharacter::DoContinueCombo()
-{
-	if (!AttackComponent || !ComboAttackMontage)
-	{
-		ApplyGameplayStateIdle();
 		return;
 	}
 
-	AttackComponent->StartAttack();
-	ApplyGameplayStateAttacking();
-
-	ComboCount = 0;
-
-	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-	{
-		const float MontageLength = AnimInstance->Montage_Play(
-			ComboAttackMontage, 1.0f, EMontagePlayReturnType::MontageLength, 0.0f, true
-		);
-
-		if (MontageLength > 0.0f)
-		{
-			AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ComboAttackMontage);
-		}
-		else
-		{
-			ApplyGameplayStateIdle();
-		}
-	}
-	else
-	{
-		ApplyGameplayStateIdle();
-	}
-}
-
-void AMaidCharacter::CheckCombo_Implementation()
-{
-	const bool bAttacking = CharacterStateComponent
-		&& CharacterStateComponent->IsAttacking()
-		&& CharacterStateComponent->GetAttackState() != EAttackState::WhiffRecover;
-
-	if (bAttacking)
-	{
-		// if there were no inputs since our last input, don't continue the combo and enter recovery mode
-		if (CachedAttackInputTime <= 0.f)
-		{
-			ApplyGameplayStateWhiffRecover();
-			return;
-		}
-
-		// reset the count so the player needs to make another input to continue the chain
-		CachedAttackInputTime = 0.f;
-
-		++ComboCount;
-
-		if (ComboCount < ComboSectionNames.Num())
-		{
-			if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-			{
-				AnimInstance->Montage_JumpToSection(ComboSectionNames[ComboCount], ComboAttackMontage);
-			}
-		}
-	}
-}
-
-void AMaidCharacter::RecoveryEnd_Implementation()
-{
-	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-	{
-		AnimInstance->Montage_Stop(.3f, ComboAttackMontage);
-	}
+	AttackComponent->RequestComboAttack();
 }
 
 void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -453,8 +386,10 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 		return;
 	}
 
-	ComboCount = 0;
-	CachedAttackInputTime = 0.f;
+	if (AttackComponent)
+	{
+		AttackComponent->ResetComboRuntime();
+	}
 
 	if (CharacterStateComponent
 		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active)
@@ -524,6 +459,38 @@ void AMaidCharacter::HandleDamageTaken(
 	AController* InstigatedBy
 )
 {
+	(void)InHealthComponent;
+	(void)CurrentHealth;
+	(void)DamageCauser;
+	(void)InstigatedBy;
+
+	// Presentation first (shake / hit-stop / hurt SFX) — including MeiDou chip (super armor = no stagger anim only).
+	if (UWorld* World = GetWorld())
+	{
+		if (UCombatFeedbackSubsystem* Feedback = World->GetSubsystem<UCombatFeedbackSubsystem>())
+		{
+			Feedback->NotifyDamageReceived(
+				this,
+				Damage,
+				DamageReceivedCameraShake,
+				Feedback->DamageReceivedHitStopDuration,
+				Feedback->DamageReceivedHitStopTimeDilation,
+				bHitStopOnDamageReceived
+			);
+		}
+
+		if (AttackComponent)
+		{
+			if (const UCombatAudioData* Audio = AttackComponent->GetCombatAudio())
+			{
+				if (Audio->Hurt)
+				{
+					UGameplayStatics::PlaySoundAtLocation(World, Audio->Hurt, GetActorLocation());
+				}
+			}
+		}
+	}
+
 	// MeiDou (pose/result) has super armor: take damage but do not interrupt action montages
 	// should probably introduce a poise mechanic in the future...
 	if (MeiDouComponent && MeiDouComponent->GetMeiDouState() != EMeiDouState::EMDS_Idle)
@@ -533,7 +500,7 @@ void AMaidCharacter::HandleDamageTaken(
 
 	if (!DamageMontage)
 	{
-		if (IsPlayerControlled())
+		if (!bPostDamageIFramesPlayerOnly || IsPlayerControlled())
 		{
 			GrantIFrames(PostDamageIFrameDuration);
 		}
@@ -560,9 +527,10 @@ void AMaidCharacter::HandleDamageTaken(
 	// Damage reactions should interrupt any ongoing action montage.
 	AnimInstance->Montage_Stop(0.05f);
 
+	// Health slice Stagger (distinct from attack WhiffRecover).
 	ApplyGameplayStateStagger();
 
-	if (IsPlayerControlled())
+	if (!bPostDamageIFramesPlayerOnly || IsPlayerControlled())
 	{
 		GrantIFrames(PostDamageIFrameDuration);
 	}
@@ -597,11 +565,38 @@ void AMaidCharacter::HandleDamageTaken(
 
 void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser)
 {
+	(void)InHealthComponent;
+	(void)DamageCauser;
+
 	if (bHasDied)
 	{
 		return;
 	}
 	bHasDied = true;
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UCombatFeedbackSubsystem* Feedback = World->GetSubsystem<UCombatFeedbackSubsystem>())
+		{
+			const TSubclassOf<UCameraShakeBase> ShakeClass =
+				DeathCameraShake ? DeathCameraShake : DamageReceivedCameraShake;
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			{
+				Feedback->PlayCombatShake(PC, ShakeClass, 1.25f);
+			}
+		}
+
+		if (AttackComponent)
+		{
+			if (const UCombatAudioData* Audio = AttackComponent->GetCombatAudio())
+			{
+				if (Audio->Death)
+				{
+					UGameplayStatics::PlaySoundAtLocation(World, Audio->Death, GetActorLocation());
+				}
+			}
+		}
+	}
 
 	if (AttackComponent)
 	{
@@ -885,12 +880,13 @@ void AMaidCharacter::NotifyDashEnded()
 
 bool AMaidCharacter::IsDead() const
 {
-	if (bHasDied)
+	// Primary truth: Health pool. bHasDied is set on deplete for presentation/flow.
+	if (HealthComponent)
 	{
-		return true;
+		return HealthComponent->IsDead() || bHasDied;
 	}
 
-	return HealthComponent && HealthComponent->IsDead();
+	return bHasDied;
 }
 
 void AMaidCharacter::ResetForFlowRestart()
@@ -898,9 +894,12 @@ void AMaidCharacter::ResetForFlowRestart()
 	bHasDied = false;
 	bDamageReactionActive = false;
 	InvulnerableUntilTime = 0.f;
-	ComboCount = 0;
-	CachedAttackInputTime = 0.f;
 	NextDamageSectionIndex = 0;
+
+	if (AttackComponent)
+	{
+		AttackComponent->ResetComboRuntime();
+	}
 
 	if (CharacterStateComponent)
 	{

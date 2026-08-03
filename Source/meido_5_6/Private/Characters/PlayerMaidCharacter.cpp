@@ -39,6 +39,11 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	}
 }
 
+ECombatTeam APlayerMaidCharacter::GetCombatTeam_Implementation() const
+{
+	return ECombatTeam::Player;
+}
+
 void APlayerMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "InputActionValue.h"
 #include "MaidCharacter.h"
+#include "Interfaces/CombatTeamSource.h"
 #include "DemoPlayerMaidCharacter.generated.h"
 
 class UInputAction;
@@ -12,12 +13,14 @@ class USpringArmComponent;
 class UCameraComponent;
 
 UCLASS()
-class MEIDO_5_6_API ADemoPlayerMaidCharacter : public AMaidCharacter
+class MEIDO_5_6_API ADemoPlayerMaidCharacter : public AMaidCharacter, public ICombatTeamSource
 {
 	GENERATED_BODY()
 
 public:
 	ADemoPlayerMaidCharacter();
+
+	virtual ECombatTeam GetCombatTeam_Implementation() const override;
 
 	UFUNCTION(BlueprintCallable, Category="Camera|Menu")
 	void ApplyMenuCameraPose();

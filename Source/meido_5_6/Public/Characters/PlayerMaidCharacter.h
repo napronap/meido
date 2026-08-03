@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "InputActionValue.h"
 #include "Characters/MaidCharacter.h"
+#include "Interfaces/CombatTeamSource.h"
 #include "PlayerMaidCharacter.generated.h"
 
 class UInputAction;
@@ -15,12 +16,14 @@ class UCameraComponent;
  * 
  */
 UCLASS()
-class MEIDO_5_6_API APlayerMaidCharacter : public AMaidCharacter
+class MEIDO_5_6_API APlayerMaidCharacter : public AMaidCharacter, public ICombatTeamSource
 {
 	GENERATED_BODY()
 	
 public:
 	APlayerMaidCharacter();
+
+	virtual ECombatTeam GetCombatTeam_Implementation() const override;
 	
 protected:
 	virtual void BeginPlay() override;

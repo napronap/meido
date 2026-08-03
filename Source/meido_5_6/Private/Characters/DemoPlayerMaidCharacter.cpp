@@ -45,6 +45,11 @@ ADemoPlayerMaidCharacter::ADemoPlayerMaidCharacter()
 	}
 }
 
+ECombatTeam ADemoPlayerMaidCharacter::GetCombatTeam_Implementation() const
+{
+	return ECombatTeam::Player;
+}
+
 void ADemoPlayerMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();

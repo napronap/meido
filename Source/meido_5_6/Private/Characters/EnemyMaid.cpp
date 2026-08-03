@@ -41,3 +41,8 @@ bool AEnemyMaid::CanBeTargeted_Implementation() const
 	return true;
 }
 
+ECombatTeam AEnemyMaid::GetCombatTeam_Implementation() const
+{
+	return ECombatTeam::Enemy;
+}
+

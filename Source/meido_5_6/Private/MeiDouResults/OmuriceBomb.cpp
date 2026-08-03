@@ -8,7 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystem.h"
 #include "Sound/SoundBase.h"
-#include "Utils/CombatFeedbackLibrary.h"
+#include "Utils/CombatFeedbackSubsystem.h"
 
 AOmuriceBomb::AOmuriceBomb()
 {
@@ -114,52 +114,53 @@ void AOmuriceBomb::HandleImpact()
 
 		if (bApplyImpactHitStop)
 		{
-			if (AActor* OwnerActor = GetOwner(); OwnerActor && bApplyImpactHitStopToOwner)
+			if (UCombatFeedbackSubsystem* Feedback = World->GetSubsystem<UCombatFeedbackSubsystem>())
 			{
-				UCombatFeedbackLibrary::ApplyLocalHitStop(
-					this,
-					OwnerActor,
-					ImpactHitStopDuration,
-					ImpactHitStopTimeDilation
-				);
-			}
-
-			TArray<FOverlapResult> OverlapResults;
-			FCollisionObjectQueryParams ObjectQueryParams;
-			ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
-
-			FCollisionQueryParams OverlapQueryParams(SCENE_QUERY_STAT(OmuriceBombHitStopOverlap), false, this);
-			OverlapQueryParams.AddIgnoredActor(this);
-			if (AActor* OwnerActor = GetOwner())
-			{
-				OverlapQueryParams.AddIgnoredActor(OwnerActor);
-			}
-
-			if (World->OverlapMultiByObjectType(
-				OverlapResults,
-				GetActorLocation(),
-				FQuat::Identity,
-				ObjectQueryParams,
-				FCollisionShape::MakeSphere(ImpactRadius),
-				OverlapQueryParams
-			))
-			{
-				TSet<AActor*> ProcessedActors;
-				for (const FOverlapResult& Overlap : OverlapResults)
+				if (AActor* OwnerActor = GetOwner(); OwnerActor && bApplyImpactHitStopToOwner)
 				{
-					AActor* HitActor = Overlap.GetActor();
-					if (!HitActor || ProcessedActors.Contains(HitActor))
-					{
-						continue;
-					}
-
-					ProcessedActors.Add(HitActor);
-					UCombatFeedbackLibrary::ApplyLocalHitStop(
-						this,
-						HitActor,
+					Feedback->ApplyHitStop(
+						OwnerActor,
 						ImpactHitStopDuration,
 						ImpactHitStopTimeDilation
 					);
+				}
+
+				TArray<FOverlapResult> OverlapResults;
+				FCollisionObjectQueryParams ObjectQueryParams;
+				ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+
+				FCollisionQueryParams OverlapQueryParams(SCENE_QUERY_STAT(OmuriceBombHitStopOverlap), false, this);
+				OverlapQueryParams.AddIgnoredActor(this);
+				if (AActor* OwnerActor = GetOwner())
+				{
+					OverlapQueryParams.AddIgnoredActor(OwnerActor);
+				}
+
+				if (World->OverlapMultiByObjectType(
+					OverlapResults,
+					GetActorLocation(),
+					FQuat::Identity,
+					ObjectQueryParams,
+					FCollisionShape::MakeSphere(ImpactRadius),
+					OverlapQueryParams
+				))
+				{
+					TSet<AActor*> ProcessedActors;
+					for (const FOverlapResult& Overlap : OverlapResults)
+					{
+						AActor* HitActor = Overlap.GetActor();
+						if (!HitActor || ProcessedActors.Contains(HitActor))
+						{
+							continue;
+						}
+
+						ProcessedActors.Add(HitActor);
+						Feedback->ApplyHitStop(
+							HitActor,
+							ImpactHitStopDuration,
+							ImpactHitStopTimeDilation
+						);
+					}
 				}
 			}
 		}

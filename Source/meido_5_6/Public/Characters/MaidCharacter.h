@@ -3,12 +3,13 @@
 #include "CoreMinimal.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "MeiDouPoseDataAsset.h"
+#include "Animation/AnimInstance.h"
 #include "GameFramework/Character.h"
-#include "Interfaces/ComboAttacker.h"
 #include "Types/MeiDouTypes.h"
 #include "MaidCharacter.generated.h"
 
 class UAttackComponent;
+class UCameraShakeBase;
 class UCharacterStateComponent;
 class UDashComponent;
 class UHealthComponent;
@@ -17,7 +18,7 @@ class UAnimMontage;
 class AController;
 
 UCLASS(Abstract)
-class MEIDO_5_6_API AMaidCharacter : public ACharacter, public IComboAttacker
+class MEIDO_5_6_API AMaidCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
@@ -39,19 +40,11 @@ public:
 	void DoStartComboAttack();
 	bool DoDash(const FVector2D& MoveInput = FVector2D::ZeroVector, bool bLockOnActive = false);
 
-protected:
-	virtual void BeginPlay() override;
+	/** Used by UAttackComponent combo chain to bind montage end. */
+	FOnMontageEnded OnAttackMontageEnded;
 
 	/*
-	 *	movement (maybe put camera in player maid class because AI maid won't use it
-	 */
-	void DoLook(float Yaw, float Pitch);
-	virtual void Jump() override;
-	virtual void StopJumping() override;
-
-	/*
-	 * State — authoritative posture is CharacterStateComponent (CP0.2+).
-	 * Apply* helpers write component slices only (CP0.3: no ECharacterState dual-write).
+	 * State — Apply* helpers write CharacterStateComponent slices.
 	 */
 	void ApplyGameplayStateIdle();
 	void ApplyGameplayStateAttacking();
@@ -63,18 +56,15 @@ protected:
 	void ApplyGameplayStateMeiDouFailed();
 	void ApplyGameplayStateDead();
 
+protected:
+	virtual void BeginPlay() override;
+
 	/*
-	 * Combat
+	 *	movement (maybe put camera in player maid class because AI maid won't use it
 	 */
-	UPROPERTY(EditAnywhere, Category="Combat|Combo")
-	UAnimMontage* ComboAttackMontage;
-
-	UPROPERTY(EditAnywhere, Category="Combat|Combo")
-	TArray<FName> ComboSectionNames;
-
-	int32 ComboIndex = 0;
-	int32 ComboCount = 0;
-	float CachedAttackInputTime = 0.0f;
+	void DoLook(float Yaw, float Pitch);
+	virtual void Jump() override;
+	virtual void StopJumping() override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State")
 	UCharacterStateComponent* CharacterStateComponent;
@@ -88,12 +78,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
 	UHealthComponent* HealthComponent;
 
-	void DoContinueCombo();
-
-	virtual void CheckCombo_Implementation() override;
-	virtual void RecoveryEnd_Implementation() override;
-
-	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	FOnMontageEnded OnDamageMontageEnded;
@@ -143,8 +127,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
 	float PostDamageIFrameDuration = 0.35f;
 
+	/**
+	 * Post-hit i-frames only for player-controlled pawns when true (current feel).
+	 * Enemies stay open to multi-hit. Tune / revisit with dash-as-primary invuln later.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames")
+	bool bPostDamageIFramesPlayerOnly = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
 	float DashIFrameDuration = 0.10f;
+
+	/** Camera shake when this pawn takes damage (local player). Null = no shake until author assigns. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Feedback|Shake")
+	TSubclassOf<UCameraShakeBase> DamageReceivedCameraShake;
+
+	/** Stronger shake on death (optional; falls back to DamageReceivedCameraShake). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Feedback|Shake")
+	TSubclassOf<UCameraShakeBase> DeathCameraShake;
+
+	/** Apply short hit-stop on self when receiving damage (stacks with attacker pair feel). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Feedback")
+	bool bHitStopOnDamageReceived = true;
 
 	UFUNCTION()
 	void HandleDamageTaken(
@@ -171,6 +174,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Death", meta=(ClampMin="0.0", UIMin="0.0"))
 	float DeathLifeSpanSeconds = 6.f;
 
+	/** Presentation/flow mirror of Health dead. Prefer IsDead() / HealthComponent->IsDead() for queries. */
 	bool bHasDied = false;
 	float InvulnerableUntilTime = 0.f;
 

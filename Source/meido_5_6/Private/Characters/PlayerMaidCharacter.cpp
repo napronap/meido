@@ -7,11 +7,11 @@
 #include "ActorComponents/CharacterStateComponent.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
+#include "ActorComponents/MaidCameraManagerComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "Interfaces/Targetable.h"
 
 APlayerMaidCharacter::APlayerMaidCharacter()
 {
@@ -32,6 +32,8 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>("ViewCamera");
 	ViewCamera->SetupAttachment(CameraBoom);
 
+	CameraManager = CreateDefaultSubobject<UMaidCameraManagerComponent>(TEXT("CameraManager"));
+
 	// CP0.1 smoke: on-screen Overall / Attack / Health (disable on component if noisy)
 	if (CharacterStateComponent)
 	{
@@ -47,6 +49,12 @@ ECombatTeam APlayerMaidCharacter::GetCombatTeam_Implementation() const
 void APlayerMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (CameraManager)
+	{
+		CameraManager->Initialize(CameraBoom, ViewCamera);
+		CameraManager->BindLockOn(LockOnComponent);
+	}
 }
 
 void APlayerMaidCharacter::Tick(float DeltaTime)
@@ -56,14 +64,7 @@ void APlayerMaidCharacter::Tick(float DeltaTime)
 	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
 	UpdateAnimLockOnState(bLockOnActive);
 	ApplyLockOnMovementMode(bLockOnActive);
-	
-	if (bLockOnActive)
-	{
-		if (AActor* Target = LockOnComponent->GetCurrentTarget())
-		{
-			RotateCameraToTarget(Target, DeltaTime);
-		}
-	}
+	// Camera Free lag + LockOn yaw: UMaidCameraManagerComponent
 }
 
 void APlayerMaidCharacter::Move(const FInputActionValue& Value)
@@ -132,47 +133,33 @@ void APlayerMaidCharacter::InputMeiDouN()
 
 void APlayerMaidCharacter::ToggleLockOn()
 {
-	if (!LockOnComponent) return;
+	if (!LockOnComponent)
+	{
+		return;
+	}
 
 	if (LockOnComponent->IsLockedOn())
 	{
 		LockOnComponent->ClearLockOn();
 		UpdateAnimLockOnState(false);
 		ApplyLockOnMovementMode(false);
-		GEngine->AddOnScreenDebugMessage(
-			-1, 1.5f, FColor::Yellow, TEXT("Lock on cleared")
-		);
 	}
 	else
 	{
 		const bool bLocked = LockOnComponent->TryLockOn();
 		UpdateAnimLockOnState(bLocked);
 		ApplyLockOnMovementMode(bLocked);
-
-		if (bLocked && GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(
-				-1, 1.5f, FColor::Yellow, TEXT("LOCK ON")
-			);
-		}
 	}
 }
 
 void APlayerMaidCharacter::OnLockOnSwitch(const FInputActionValue& Value)
 {
-	if (!LockOnComponent) return;
-	const float Axis = Value.Get<float>();
+	if (!LockOnComponent)
+	{
+		return;
+	}
 
-	const FString Message = FString::Printf(
-		TEXT("Lockon switch input: %f"),
-		Axis
-	);
-
-	GEngine->AddOnScreenDebugMessage(
-		-1, 1.5f, FColor::Yellow, Message
-	);
-
-	LockOnComponent->HandleSwitchInput(Axis);
+	LockOnComponent->HandleSwitchInput(Value.Get<float>());
 }
 
 void APlayerMaidCharacter::OnLockOnSwitchReleased(const FInputActionValue& Value)
@@ -213,47 +200,6 @@ void APlayerMaidCharacter::UpdateAnimLockOnState(bool bLockOnActive)
 	{
 		MaidAnimInstance->bIsLockedOn = bLockOnActive;
 	}
-}
-
-void APlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
-{
-	if (!Controller || !ViewCamera)
-	{
-		return;
-	}
-
-	FVector TargetLocation;
-
-	if (Target->Implements<UTargetable>())
-	{
-		TargetLocation =
-			ITargetable::Execute_GetTargetLocation(Target);
-	}
-	else
-	{
-		TargetLocation = Target->GetActorLocation();
-	}
-
-	const FVector CameraLocation = ViewCamera->GetComponentLocation();
-	const FVector Direction = (TargetLocation - CameraLocation).GetSafeNormal();
-
-	FRotator DesiredRotation = Direction.Rotation();
-
-	FRotator CurrentRotation = Controller->GetControlRotation();
-	const FRotator DesiredControlRotation(
-		CurrentRotation.Pitch,
-		DesiredRotation.Yaw,
-		CurrentRotation.Roll
-	);
-
-	const FRotator NewRotation = FMath::RInterpTo(
-		CurrentRotation,
-		DesiredControlRotation,
-		DeltaTime,
-		LockOnCameraYawInterpSpeed
-	);
-
-	Controller->SetControlRotation(NewRotation);
 }
 
 void APlayerMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

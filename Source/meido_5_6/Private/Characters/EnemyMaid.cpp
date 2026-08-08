@@ -2,10 +2,12 @@
 
 
 #include "Characters/EnemyMaid.h"
+
 #include "ActorComponents/HealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "IA/EnemyMaidAIController.h"
+#include "UI/SimpleHealthBarComponent.h"
 
 AEnemyMaid::AEnemyMaid()
 {
@@ -19,6 +21,9 @@ AEnemyMaid::AEnemyMaid()
 		MovementComponent->bUseRVOAvoidance = true;
 		MovementComponent->AvoidanceConsiderationRadius = 180.f;
 	}
+
+	HealthBarComponent = CreateDefaultSubobject<USimpleHealthBarComponent>(TEXT("HealthBarComponent"));
+	HealthBarComponent->SetupAttachment(GetRootComponent());
 }
 
 FVector AEnemyMaid::GetTargetLocation_Implementation()
@@ -45,4 +50,3 @@ ECombatTeam AEnemyMaid::GetCombatTeam_Implementation() const
 {
 	return ECombatTeam::Enemy;
 }
-

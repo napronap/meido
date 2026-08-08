@@ -59,6 +59,12 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	/**
+	 * Spring-arm camera probe uses ECC_Camera. Ensure this maid does not block that channel
+	 * (capsule + mesh). BP presets alone are easy to mis-set on the wrong component.
+	 */
+	void ApplyCameraProbeIgnorePolicy();
+
 	/*
 	 *	movement (maybe put camera in player maid class because AI maid won't use it
 	 */
@@ -196,6 +202,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "State")
 	UCharacterStateComponent* GetCharacterStateComponent() const { return CharacterStateComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "Health")
+	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
 
 	/** AnimNotifyState_DashIFrames — invuln while notify range is active. */
 	void SetIFrameOverrideActive(bool bActive);

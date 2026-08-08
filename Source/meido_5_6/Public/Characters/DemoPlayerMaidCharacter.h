@@ -11,6 +11,7 @@
 class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
+class UMaidCameraManagerComponent;
 
 UCLASS()
 class MEIDO_5_6_API ADemoPlayerMaidCharacter : public AMaidCharacter, public ICombatTeamSource
@@ -114,16 +115,12 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	UCameraComponent* ViewCamera;
 
-	void RotateCameraToTarget(AActor* Target, float DeltaTime);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	UMaidCameraManagerComponent* CameraManager;
 
 	bool bWasLockOnActive = false;
 
-	// how fast lockon camera yaw follows target
-	UPROPERTY(EditAnywhere, Category="Camera|LockOn", meta=(ClampMin="0.1", ClampMax="30.0"))
-	float LockOnCameraYawInterpSpeed = 8.f;
-
-	// ALL these variables are here for fast iteration. They are related to the transition between mainmenu/play state
-	// will probably remove all this and come up with a proper system in the future
+	// Menu/Win/Lose poses — V1 leaves these on Demo; Camera Manager V2 migrates profiles later.
 #pragma region
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Camera|Menu")
 	bool bApplyMenuCameraPoseOnBeginPlay = true;

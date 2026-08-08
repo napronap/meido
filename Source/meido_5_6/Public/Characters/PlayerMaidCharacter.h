@@ -11,6 +11,7 @@
 class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
+class UMaidCameraManagerComponent;
 
 /**
  * 
@@ -94,13 +95,10 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	UCameraComponent* ViewCamera;
 
-	void RotateCameraToTarget(AActor* Target, float DeltaTime);
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	UMaidCameraManagerComponent* CameraManager;
 
 	bool bWasLockOnActive = false;
 
-	// how fast lockon camera yaw follows target
-	UPROPERTY(EditAnywhere, Category="Camera|LockOn", meta=(ClampMin="0.1", ClampMax="30.0"))
-	float LockOnCameraYawInterpSpeed = 8.f;
-	
 	FVector2D CachedMoveInput = FVector2D::ZeroVector;
 };

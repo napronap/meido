@@ -12,8 +12,12 @@
 #include "AnimInstances/MaidAnimInstance.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraShakeBase.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "Animation/AnimMontage.h"
+#include "Engine/EngineTypes.h"
 #include "IA/EnemyMaidAIController.h"
 #include "Audio/CombatAudioData.h"
 #include "Kismet/GameplayStatics.h"
@@ -59,12 +63,18 @@ AMaidCharacter::AMaidCharacter()
 	// Native so combo montage/sections always show on the inherited component (not only BP-added Attack).
 	AttackComponent = CreateDefaultSubobject<UAttackComponent>(TEXT("AttackComponent"));
 	DashComponent = CreateDefaultSubobject<UDashComponent>(TEXT("DashComponent"));
+	// CP2.3: LockOn native CDO (marker + TargetObjectType defaults live here; delete BP-added duplicate if any).
+	LockOnComponent = CreateDefaultSubobject<ULockOnComponent>(TEXT("LockOnComponent"));
+	// CP2.4: Health native CDO (float bars bind via USimpleHealthBarComponent on enemies).
+	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 }
 
 // Called when the game starts or when spawned
 void AMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	ApplyCameraProbeIgnorePolicy();
 
 	if (!CharacterStateComponent)
 	{
@@ -81,9 +91,16 @@ void AMaidCharacter::BeginPlay()
 		DashComponent = FindComponentByClass<UDashComponent>();
 	}
 
-	HealthComponent = FindComponentByClass<UHealthComponent>();
+	if (!HealthComponent)
+	{
+		HealthComponent = FindComponentByClass<UHealthComponent>();
+	}
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
-	LockOnComponent = FindComponentByClass<ULockOnComponent>();
+
+	if (!LockOnComponent)
+	{
+		LockOnComponent = FindComponentByClass<ULockOnComponent>();
+	}
 
 	if (HealthComponent)
 	{
@@ -119,6 +136,20 @@ void AMaidCharacter::BeginPlay()
 void AMaidCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+void AMaidCharacter::ApplyCameraProbeIgnorePolicy()
+{
+	// SpringArm only ignores its Owner actor for the query owner; other maids still hit if they Block Camera.
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	}
+
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	{
+		SkelMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	}
 }
 
 void AMaidCharacter::ApplyGameplayStateIdle()

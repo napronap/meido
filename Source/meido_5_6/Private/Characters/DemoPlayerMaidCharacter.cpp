@@ -7,6 +7,7 @@
 #include "ActorComponents/CharacterStateComponent.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
+#include "ActorComponents/MaidCameraManagerComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
 #include "PlayerControllers/DemoMaidPlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -34,6 +35,8 @@ ADemoPlayerMaidCharacter::ADemoPlayerMaidCharacter()
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ViewCamera"));
 	ViewCamera->SetupAttachment(CameraBoom);
 
+	CameraManager = CreateDefaultSubobject<UMaidCameraManagerComponent>(TEXT("CameraManager"));
+
 	// Player should remain in scene on death for lose flow/camera
 	// (different from enemy maid that uses this to despawn)
 	DeathLifeSpanSeconds = 0.f;
@@ -53,6 +56,12 @@ ECombatTeam ADemoPlayerMaidCharacter::GetCombatTeam_Implementation() const
 void ADemoPlayerMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (CameraManager)
+	{
+		CameraManager->Initialize(CameraBoom, ViewCamera);
+		CameraManager->BindLockOn(LockOnComponent);
+	}
 
 	if (!bApplyMenuCameraPoseOnBeginPlay)
 	{
@@ -102,15 +111,7 @@ void ADemoPlayerMaidCharacter::Tick(float DeltaTime)
 	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
 	UpdateAnimLockOnState(bLockOnActive);
 	ApplyLockOnMovementMode(bLockOnActive);
-
-	if (bLockOnActive && !bWinSequenceActive && !bLoseSequenceActive)
-	{
-		AActor* Target = LockOnComponent->GetCurrentTarget();
-		if (Target)
-		{
-			RotateCameraToTarget(Target, DeltaTime);
-		}
-	}
+	// LockOn yaw + Free lag: CameraManager. Menu/Win/Lose lerps still local (V2).
 
 	// Fallback debug if CharacterStateComponent on-screen is off; prefer component Overall.
 	if (CharacterStateComponent)
@@ -471,47 +472,33 @@ void ADemoPlayerMaidCharacter::InputMeiDouN()
 
 void ADemoPlayerMaidCharacter::ToggleLockOn()
 {
-	if (!LockOnComponent) return;
+	if (!LockOnComponent)
+	{
+		return;
+	}
 
 	if (LockOnComponent->IsLockedOn())
 	{
 		LockOnComponent->ClearLockOn();
 		UpdateAnimLockOnState(false);
 		ApplyLockOnMovementMode(false);
-		GEngine->AddOnScreenDebugMessage(
-			-1, 1.5f, FColor::Yellow, TEXT("Lock on cleared")
-		);
 	}
 	else
 	{
 		const bool bLocked = LockOnComponent->TryLockOn();
 		UpdateAnimLockOnState(bLocked);
 		ApplyLockOnMovementMode(bLocked);
-
-		if (bLocked && GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(
-				-1, 1.5f, FColor::Yellow, TEXT("LOCK ON")
-			);
-		}
 	}
 }
 
 void ADemoPlayerMaidCharacter::OnLockOnSwitch(const FInputActionValue& Value)
 {
-	if (!LockOnComponent) return;
-	const float Axis = Value.Get<float>();
+	if (!LockOnComponent)
+	{
+		return;
+	}
 
-	const FString Message = FString::Printf(
-		TEXT("Lockon switch input: %f"),
-		Axis
-	);
-
-	GEngine->AddOnScreenDebugMessage(
-		-1, 1.5f, FColor::Yellow, Message
-	);
-
-	LockOnComponent->HandleSwitchInput(Axis);
+	LockOnComponent->HandleSwitchInput(Value.Get<float>());
 }
 
 void ADemoPlayerMaidCharacter::OnLockOnSwitchReleased(const FInputActionValue& Value)
@@ -554,46 +541,6 @@ void ADemoPlayerMaidCharacter::UpdateAnimLockOnState(bool bLockOnActive)
 	}
 }
 
-void ADemoPlayerMaidCharacter::RotateCameraToTarget(AActor* Target, float DeltaTime)
-{
-	if (!Controller || !ViewCamera)
-	{
-		return;
-	}
-
-	FVector TargetLocation;
-
-	if (Target->Implements<UTargetable>())
-	{
-		TargetLocation =
-			ITargetable::Execute_GetTargetLocation(Target);
-	}
-	else
-	{
-		TargetLocation = Target->GetActorLocation();
-	}
-
-	const FVector CameraLocation = ViewCamera->GetComponentLocation();
-	const FVector Direction = (TargetLocation - CameraLocation).GetSafeNormal();
-
-	FRotator DesiredRotation = Direction.Rotation();
-
-	FRotator CurrentRotation = Controller->GetControlRotation();
-	const FRotator DesiredControlRotation(
-		CurrentRotation.Pitch,
-		DesiredRotation.Yaw,
-		CurrentRotation.Roll
-	);
-
-	const FRotator NewRotation = FMath::RInterpTo(
-		CurrentRotation,
-		DesiredControlRotation,
-		DeltaTime,
-		LockOnCameraYawInterpSpeed
-	);
-
-	Controller->SetControlRotation(NewRotation);
-}
 
 void ADemoPlayerMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {

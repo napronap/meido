@@ -15,6 +15,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Interfaces/Targetable.h"
+#include "UI/MeiDouPoseBubbleComponent.h"
 
 ADemoPlayerMaidCharacter::ADemoPlayerMaidCharacter()
 {
@@ -36,6 +37,10 @@ ADemoPlayerMaidCharacter::ADemoPlayerMaidCharacter()
 	ViewCamera->SetupAttachment(CameraBoom);
 
 	CameraManager = CreateDefaultSubobject<UMaidCameraManagerComponent>(TEXT("CameraManager"));
+
+	PoseBubbleComponent = CreateDefaultSubobject<UMeiDouPoseBubbleComponent>(TEXT("PoseBubbleComponent"));
+	PoseBubbleComponent->SetupAttachment(GetRootComponent());
+	PoseBubbleComponent->SetRelativeLocation(FVector(0.f, 0.f, 110.f));
 
 	// Player should remain in scene on death for lose flow/camera
 	// (different from enemy maid that uses this to despawn)

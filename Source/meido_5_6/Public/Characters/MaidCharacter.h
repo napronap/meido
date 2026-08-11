@@ -56,6 +56,25 @@ public:
 	void ApplyGameplayStateMeiDouFailed();
 	void ApplyGameplayStateDead();
 
+	/*
+	 * MeiDou presentation — public so UMeiDouComponent can cast-call (CP3.1).
+	 */
+	void RegisterMeiDouInput(EMeiDouInput Input);
+	void PlayMeiDouPose(const FMeiDouPoseAnimationRequest& Request);
+	void PlayMeiDouResult(const FMeiDouResolvedCombo& Result);
+	void PlayMeiDouFail(const FMeiDouResolvedCombo& Result);
+
+	/**
+	 * Fallback pose assets if UMeiDouComponent::PoseDataMap is empty (legacy BP).
+	 * Prefer configuring poses on the MeiDou component.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MeiDou|Legacy")
+	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
+
+	/** Fallback if component FailMontage is unset. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MeiDou|Legacy")
+	UAnimMontage* MeiDouFailMontage = nullptr;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -97,29 +116,12 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
 	UMeiDouComponent* MeiDouComponent;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MeiDou")
-	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
-
-	void RegisterMeiDouInput(EMeiDouInput Input);
-
-	UFUNCTION()
-	void HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimationRequest& Request);
-
-	UFUNCTION()
-	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
-
-	UFUNCTION()
-	void HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result);
 
 	UFUNCTION()
 	void HandleMeiDouControlLockChanged(bool bIsLocked);
 
-	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
+	UPROPERTY(EditDefaultsOnly, Category="MeiDou|Legacy")
 	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MeiDou")
-	UAnimMontage* MeiDouFailMontage = nullptr;
 
 	/*
 	 * damage

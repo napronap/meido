@@ -12,6 +12,7 @@ class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
 class UMaidCameraManagerComponent;
+class UMeiDouPoseBubbleComponent;
 
 UCLASS()
 class MEIDO_5_6_API ADemoPlayerMaidCharacter : public AMaidCharacter, public ICombatTeamSource
@@ -22,6 +23,9 @@ public:
 	ADemoPlayerMaidCharacter();
 
 	virtual ECombatTeam GetCombatTeam_Implementation() const override;
+
+	UFUNCTION(BlueprintPure, Category = "MeiDou|UI")
+	UMeiDouPoseBubbleComponent* GetPoseBubbleComponent() const { return PoseBubbleComponent; }
 
 	UFUNCTION(BlueprintCallable, Category="Camera|Menu")
 	void ApplyMenuCameraPose();
@@ -117,6 +121,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	UMaidCameraManagerComponent* CameraManager;
+
+	/** Same player-only pose bubble as playground player (demo path). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeiDou|UI")
+	TObjectPtr<UMeiDouPoseBubbleComponent> PoseBubbleComponent;
 
 	bool bWasLockOnActive = false;
 

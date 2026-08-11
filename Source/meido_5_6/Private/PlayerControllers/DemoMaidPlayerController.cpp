@@ -1,30 +1,36 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "PlayerControllers/DemoMaidPlayerController.h"
-#include "Characters/MaidCharacter.h"
-#include "Characters/DemoPlayerMaidCharacter.h"
+
 #include "Characters/EnemyMaid.h"
-#include "Spawners/EnemyWaveSpawner.h"
-#include "ActorComponents/HealthComponent.h"
-#include "IA/EnemyMaidAIController.h"
-#include "Blueprint/UserWidget.h"
+#include "EngineUtils.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "GameModes/MeidoDemoGameMode.h"
+#include "IA/EnemyMaidAIController.h"
 #include "InputAction.h"
-#include "Engine/LocalPlayer.h"
-#include "EngineUtils.h"
-#include "Components/InputComponent.h"
 #include "InputCoreTypes.h"
-#include "Kismet/KismetSystemLibrary.h"
+#include "Blueprint/UserWidget.h"
+#include "Engine/LocalPlayer.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 void ADemoMaidPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	BindFlowSources();
-	EnterMainMenuState();
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
+	{
+		GM->OnFlowStateChanged.RemoveDynamic(this, &ADemoMaidPlayerController::HandleGameModeFlowChanged);
+		GM->OnFlowStateChanged.AddDynamic(this, &ADemoMaidPlayerController::HandleGameModeFlowChanged);
+		// GM EnterMainMenu may already have fired before PC BeginPlay — apply current state.
+		ApplyFlowPresentation(GM->GetFlowState());
+	}
+	else
+	{
+		// Map missing MeidoDemoGameMode: still show main menu UI so BP maps don't go blank.
+		ShowMainMenuUI();
+	}
 }
 
 void ADemoMaidPlayerController::SetupInputComponent()
@@ -33,9 +39,13 @@ void ADemoMaidPlayerController::SetupInputComponent()
 
 	if (IsLocalPlayerController())
 	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
+			ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 		{
-			Subsystem->AddMappingContext(DefaultIMC, 0);
+			if (DefaultIMC)
+			{
+				Subsystem->AddMappingContext(DefaultIMC, 0);
+			}
 		}
 	}
 
@@ -43,15 +53,19 @@ void ADemoMaidPlayerController::SetupInputComponent()
 	{
 		if (PauseInputAction)
 		{
-			// Allow this action to fire while gameplay is paused so it can unpause
 			PauseInputAction->bTriggerWhenPaused = true;
-			EnhancedInputComponent->BindAction(PauseInputAction, ETriggerEvent::Started, this, &ADemoMaidPlayerController::OnPauseInput);
+			EnhancedInputComponent->BindAction(
+				PauseInputAction,
+				ETriggerEvent::Started,
+				this,
+				&ADemoMaidPlayerController::OnPauseInput
+			);
 		}
 	}
 
 	if (InputComponent)
 	{
-		// TODO remove (debug only): quick AI freeze toggle for demos.
+		// TODO remove (debug only) — POST 4.b
 		InputComponent->BindKey(EKeys::K, IE_Pressed, this, &ADemoMaidPlayerController::OnDebugToggleEnemyAI);
 	}
 }
@@ -59,184 +73,103 @@ void ADemoMaidPlayerController::SetupInputComponent()
 void ADemoMaidPlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
-	BindPlayerHealth(InPawn);
+
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
+	{
+		GM->NotifyPlayerPawnReady(InPawn);
+	}
 }
 
-void ADemoMaidPlayerController::OnUnPossess()
+AMeidoDemoGameMode* ADemoMaidPlayerController::GetDemoGameMode() const
 {
-	BindPlayerHealth(nullptr);
-	Super::OnUnPossess();
+	return GetWorld() ? GetWorld()->GetAuthGameMode<AMeidoDemoGameMode>() : nullptr;
+}
+
+EFlowState ADemoMaidPlayerController::GetFlowState() const
+{
+	if (const AMeidoDemoGameMode* GM = GetDemoGameMode())
+	{
+		return GM->GetFlowState();
+	}
+	return EFlowState::MainMenu;
+}
+
+void ADemoMaidPlayerController::HandleGameModeFlowChanged(const EFlowState NewState)
+{
+	OnFlowStateChanged.Broadcast(NewState);
+	// Presentation already applied by GM via ApplyFlowPresentation; avoid double if GM calls Apply then broadcasts.
+	// GM SetFlowState: Broadcast then ApplyFlowPresentation — so we only rebroadcast for BP here.
+	// Wait: GM does ApplyFlowPresentation inside SetFlowState AFTER broadcast. Order is:
+	//   FlowState = New; OnFlowStateChanged.Broadcast; PC->ApplyFlowPresentation
+	// PC is also listening to OnFlowStateChanged — would Apply twice if we Apply here.
+	// So HandleGameModeFlowChanged only rebroadcasts for local BP listeners.
 }
 
 void ADemoMaidPlayerController::StartGameFromMenu()
 {
-	const bool bRestartingFromResultState = CurrentFlowState == EFlowState::Win
-		|| CurrentFlowState == EFlowState::Lose;
-
-	const bool bCanStartFlow = CurrentFlowState == EFlowState::MainMenu
-		|| CurrentFlowState == EFlowState::Win
-		|| CurrentFlowState == EFlowState::Lose;
-	if (!bCanStartFlow)
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
 	{
-		return;
+		GM->RequestStartFromMenu();
 	}
-
-	if (bWaitingForMenuCameraTransition)
-	{
-		return;
-	}
-
-	if (CurrentFlowState == EFlowState::Win || CurrentFlowState == EFlowState::Lose)
-	{
-		if (MainMenuWidget && MainMenuWidget->IsInViewport())
-		{
-			MainMenuWidget->RemoveFromParent();
-		}
-		if (PauseMenuWidget && PauseMenuWidget->IsInViewport())
-		{
-			PauseMenuWidget->RemoveFromParent();
-		}
-		if (WinWidget && WinWidget->IsInViewport())
-		{
-			WinWidget->RemoveFromParent();
-		}
-		if (LoseWidget && LoseWidget->IsInViewport())
-		{
-			LoseWidget->RemoveFromParent();
-		}
-
-		bWaitingForWinSequence = false;
-		bWaitingForLoseSequence = false;
-		UGameplayStatics::SetGlobalTimeDilation(this, 1.0f);
-		SetPause(false);
-		SetGameplayInputEnabled(false);
-		SetAllEnemyAIEnabled(false);
-
-		if (AMaidCharacter* MaidPawn = Cast<AMaidCharacter>(GetPawn()))
-		{
-			MaidPawn->CustomTimeDilation = 1.0f;
-			MaidPawn->ResetForFlowRestart();
-		}
-
-		if (BoundWaveSpawner)
-		{
-			BoundWaveSpawner->ResetWave();
-			BoundWaveSpawner->StartWave();
-		}
-
-		FInputModeGameOnly InputMode;
-		SetInputMode(InputMode);
-		bShowMouseCursor = false;
-		SetFlowState(EFlowState::MainMenu);
-	}
-
-	if (ADemoPlayerMaidCharacter* PlayerMaid = Cast<ADemoPlayerMaidCharacter>(GetPawn()))
-	{
-		// For restart from Win/Lose, interpolate directly from current camera (no snap to menu pose)
-		if (!bRestartingFromResultState)
-		{
-			PlayerMaid->ApplyMenuCameraPose();
-		}
-		PlayerMaid->StartMenuCameraTransitionToGameplay();
-		if (PlayerMaid->IsMenuCameraTransitionActive())
-		{
-			bWaitingForMenuCameraTransition = true;
-			return;
-		}
-	}
-
-	CompleteStartGameFromMenu();
 }
 
 void ADemoMaidPlayerController::CompleteStartGameFromMenu()
 {
-	if (CurrentFlowState != EFlowState::MainMenu)
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
 	{
-		return;
+		GM->NotifyMenuCameraFinished();
 	}
-
-	bWaitingForMenuCameraTransition = false;
-	EnterPlayingState();
 }
 
 void ADemoMaidPlayerController::CompleteWinSequence()
 {
-	if (!bWaitingForWinSequence)
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
 	{
-		return;
-	}
-
-	bWaitingForWinSequence = false;
-
-	if (CurrentFlowState == EFlowState::Playing || CurrentFlowState == EFlowState::Paused)
-	{
-		EnterWinState();
+		GM->NotifyWinCameraFinished();
 	}
 }
 
 void ADemoMaidPlayerController::CompleteLoseSequence()
 {
-	if (!bWaitingForLoseSequence)
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
 	{
-		return;
+		GM->NotifyLoseCameraFinished();
 	}
-
-	UGameplayStatics::SetGlobalTimeDilation(this, 1.0f);
-	if (AMaidCharacter* MaidPawn = Cast<AMaidCharacter>(GetPawn()))
-	{
-		MaidPawn->CustomTimeDilation = 1.0f;
-	}
-	ClearEnemiesAfterLoseTransition();
-
-	if (CurrentFlowState == EFlowState::Playing || CurrentFlowState == EFlowState::Paused)
-	{
-		EnterLoseState();
-	}
-
-	bWaitingForLoseSequence = false;
 }
 
 void ADemoMaidPlayerController::ResumeGameFromPause()
 {
-	if (CurrentFlowState != EFlowState::Paused)
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
 	{
-		return;
+		GM->RequestResumeFromPause();
 	}
-
-	EnterPlayingState();
 }
 
 void ADemoMaidPlayerController::QuitGameRequested()
 {
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
+	{
+		GM->RequestQuit();
+		return;
+	}
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
 
 void ADemoMaidPlayerController::RestartCurrentLevel()
 {
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
+	{
+		GM->RequestRestartRun();
+		return;
+	}
 	StartGameFromMenu();
 }
 
 void ADemoMaidPlayerController::TogglePauseMenu()
 {
-	if (bWaitingForWinSequence || bWaitingForLoseSequence)
+	if (AMeidoDemoGameMode* GM = GetDemoGameMode())
 	{
-		return;
-	}
-
-	if (CurrentFlowState != EFlowState::Playing && CurrentFlowState != EFlowState::Paused)
-	{
-		return;
-	}
-
-	if (CurrentFlowState == EFlowState::Playing)
-	{
-		EnterPausedState();
-		return;
-	}
-
-	if (CurrentFlowState == EFlowState::Paused)
-	{
-		ResumeGameFromPause();
+		GM->RequestTogglePause();
 	}
 }
 
@@ -250,19 +183,104 @@ void ADemoMaidPlayerController::OnDebugToggleEnemyAI()
 {
 	bDebugDisableEnemyAI = !bDebugDisableEnemyAI;
 
-	const bool bShouldEnableAI = (CurrentFlowState == EFlowState::Playing)
-		&& !bWaitingForWinSequence
-		&& !bWaitingForLoseSequence
+	const EFlowState State = GetFlowState();
+	const AMeidoDemoGameMode* GM = GetDemoGameMode();
+	const bool bWaitingWin = GM && GM->IsWaitingForWinSequence();
+	const bool bWaitingLose = GM && GM->IsWaitingForLoseSequence();
+
+	const bool bShouldEnableAI = (State == EFlowState::Playing)
+		&& !bWaitingWin
+		&& !bWaitingLose
 		&& !bDebugDisableEnemyAI;
 
 	SetAllEnemyAIEnabled(bShouldEnableAI);
 }
 
-void ADemoMaidPlayerController::EnterMainMenuState()
+void ADemoMaidPlayerController::ApplyFlowPresentation(const EFlowState NewState)
+{
+	switch (NewState)
+	{
+	case EFlowState::MainMenu:
+	case EFlowState::Tutorial:
+		ShowMainMenuUI();
+		break;
+	case EFlowState::Playing:
+		ShowPlayingUI();
+		break;
+	case EFlowState::Paused:
+		ShowPausedUI();
+		break;
+	case EFlowState::Win:
+		ShowWinUI();
+		break;
+	case EFlowState::Lose:
+		ShowLoseUI();
+		break;
+	default:
+		break;
+	}
+}
+
+void ADemoMaidPlayerController::PrepareLocalRestartPresentation()
+{
+	HideAllFlowWidgets();
+	UGameplayStatics::SetGlobalTimeDilation(this, 1.0f);
+	SetPause(false);
+	SetGameplayInputEnabled(false);
+	SetAllEnemyAIEnabled(false);
+}
+
+void ADemoMaidPlayerController::ApplyRestartInterimPresentation()
+{
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+	bShowMouseCursor = false;
+	SetGameplayInputEnabled(false);
+	SetAllEnemyAIEnabled(false);
+}
+
+void ADemoMaidPlayerController::ApplyPreWinPresentation()
+{
+	SetPause(false);
+	SetGameplayInputEnabled(false);
+	SetAllEnemyAIEnabled(false);
+}
+
+void ADemoMaidPlayerController::ApplyPreLosePresentation()
+{
+	SetPause(false);
+	SetGameplayInputEnabled(false);
+	SetAllEnemyAIEnabled(false);
+}
+
+void ADemoMaidPlayerController::HideAllFlowWidgets()
+{
+	if (MainMenuWidget && MainMenuWidget->IsInViewport())
+	{
+		MainMenuWidget->RemoveFromParent();
+	}
+	if (PauseMenuWidget && PauseMenuWidget->IsInViewport())
+	{
+		PauseMenuWidget->RemoveFromParent();
+	}
+	if (WinWidget && WinWidget->IsInViewport())
+	{
+		WinWidget->RemoveFromParent();
+	}
+	if (LoseWidget && LoseWidget->IsInViewport())
+	{
+		LoseWidget->RemoveFromParent();
+	}
+}
+
+void ADemoMaidPlayerController::ShowMainMenuUI()
 {
 	if (UUserWidget* Widget = EnsureWidget(MainMenuWidget, MainMenuWidgetClass))
 	{
-		Widget->AddToViewport(100);
+		if (!Widget->IsInViewport())
+		{
+			Widget->AddToViewport(100);
+		}
 	}
 
 	if (PauseMenuWidget && PauseMenuWidget->IsInViewport())
@@ -288,61 +306,30 @@ void ADemoMaidPlayerController::EnterMainMenuState()
 
 	bShowMouseCursor = true;
 	SetPause(false);
-	bWaitingForMenuCameraTransition = false;
-	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
 	SetGameplayInputEnabled(false);
 	SetAllEnemyAIEnabled(false);
-	SetFlowState(EFlowState::MainMenu);
 }
 
-void ADemoMaidPlayerController::EnterPlayingState()
+void ADemoMaidPlayerController::ShowPlayingUI()
 {
-	if (MainMenuWidget && MainMenuWidget->IsInViewport())
-	{
-		MainMenuWidget->RemoveFromParent();
-	}
-	if (PauseMenuWidget && PauseMenuWidget->IsInViewport())
-	{
-		PauseMenuWidget->RemoveFromParent();
-	}
-	if (WinWidget && WinWidget->IsInViewport())
-	{
-		WinWidget->RemoveFromParent();
-	}
-	if (LoseWidget && LoseWidget->IsInViewport())
-	{
-		LoseWidget->RemoveFromParent();
-	}
+	HideAllFlowWidgets();
 
 	SetPause(false);
-
 	FInputModeGameOnly InputMode;
 	SetInputMode(InputMode);
 	bShowMouseCursor = false;
-	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
 	SetGameplayInputEnabled(true);
 	SetAllEnemyAIEnabled(true);
-	SetFlowState(EFlowState::Playing);
-
-	if (BoundWaveSpawner && BoundWaveSpawner->IsWaveCompleted())
-	{
-		StartWinSequence();
-		return;
-	}
-
-	if (BoundPlayerHealthComponent && BoundPlayerHealthComponent->IsDead())
-	{
-		EnterLoseState();
-	}
 }
 
-void ADemoMaidPlayerController::EnterPausedState()
+void ADemoMaidPlayerController::ShowPausedUI()
 {
 	if (UUserWidget* Widget = EnsureWidget(PauseMenuWidget, PauseMenuWidgetClass))
 	{
-		Widget->AddToViewport(200);
+		if (!Widget->IsInViewport())
+		{
+			Widget->AddToViewport(200);
+		}
 	}
 	if (WinWidget && WinWidget->IsInViewport())
 	{
@@ -363,118 +350,12 @@ void ADemoMaidPlayerController::EnterPausedState()
 	SetInputMode(InputMode);
 
 	bShowMouseCursor = true;
-	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
 	SetPause(true);
 	SetGameplayInputEnabled(false);
-	SetFlowState(EFlowState::Paused);
 }
 
-void ADemoMaidPlayerController::StartWinSequence()
+void ADemoMaidPlayerController::ShowWinUI()
 {
-	if (CurrentFlowState != EFlowState::Playing && CurrentFlowState != EFlowState::Paused)
-	{
-		return;
-	}
-
-	if (bWaitingForWinSequence)
-	{
-		return;
-	}
-
-	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
-	UGameplayStatics::SetGlobalTimeDilation(this, 1.0f);
-	if (AMaidCharacter* MaidPawn = Cast<AMaidCharacter>(GetPawn()))
-	{
-		MaidPawn->CustomTimeDilation = 1.0f;
-	}
-	SetPause(false);
-	SetGameplayInputEnabled(false);
-	SetAllEnemyAIEnabled(false);
-
-	if (ADemoPlayerMaidCharacter* PlayerMaid = Cast<ADemoPlayerMaidCharacter>(GetPawn()))
-	{
-		PlayerMaid->StartWinSequenceCameraTransition();
-		if (PlayerMaid->IsWinSequenceActive())
-		{
-			bWaitingForWinSequence = true;
-			return;
-		}
-	}
-
-	EnterWinState();
-}
-
-void ADemoMaidPlayerController::StartLoseSequence()
-{
-	if (CurrentFlowState != EFlowState::Playing && CurrentFlowState != EFlowState::Paused)
-	{
-		return;
-	}
-
-	if (bWaitingForLoseSequence)
-	{
-		return;
-	}
-
-	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
-	SetPause(false);
-	SetGameplayInputEnabled(false);
-	SetAllEnemyAIEnabled(false);
-
-	if (BoundWaveSpawner)
-	{
-		BoundWaveSpawner->StopWave();
-	}
-
-	if (ADemoPlayerMaidCharacter* PlayerMaid = Cast<ADemoPlayerMaidCharacter>(GetPawn()))
-	{
-		PlayerMaid->StartLoseSequenceCameraTransition();
-		if (PlayerMaid->IsLoseSequenceActive())
-		{
-			bWaitingForLoseSequence = true;
-			return;
-		}
-	}
-
-	ClearEnemiesAfterLoseTransition();
-	EnterLoseState();
-}
-
-void ADemoMaidPlayerController::ClearEnemiesAfterLoseTransition()
-{
-	if (BoundWaveSpawner)
-	{
-		BoundWaveSpawner->ResetWave();
-	}
-
-	TArray<AEnemyMaid*> EnemiesToDestroy;
-	for (TActorIterator<AEnemyMaid> It(GetWorld()); It; ++It)
-	{
-		if (AEnemyMaid* Enemy = *It)
-		{
-			EnemiesToDestroy.Add(Enemy);
-		}
-	}
-
-	for (AEnemyMaid* Enemy : EnemiesToDestroy)
-	{
-		if (Enemy)
-		{
-			Enemy->Destroy();
-		}
-	}
-}
-
-void ADemoMaidPlayerController::EnterWinState()
-{
-	if (CurrentFlowState == EFlowState::Win)
-	{
-		return;
-	}
-
 	if (MainMenuWidget && MainMenuWidget->IsInViewport())
 	{
 		MainMenuWidget->RemoveFromParent();
@@ -490,7 +371,10 @@ void ADemoMaidPlayerController::EnterWinState()
 
 	if (UUserWidget* Widget = EnsureWidget(WinWidget, WinWidgetClass))
 	{
-		Widget->AddToViewport(300);
+		if (!Widget->IsInViewport())
+		{
+			Widget->AddToViewport(300);
+		}
 	}
 
 	FInputModeUIOnly InputMode;
@@ -502,21 +386,13 @@ void ADemoMaidPlayerController::EnterWinState()
 	SetInputMode(InputMode);
 
 	bShowMouseCursor = true;
-	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
 	SetPause(false);
 	SetGameplayInputEnabled(false);
 	SetAllEnemyAIEnabled(false);
-	SetFlowState(EFlowState::Win);
 }
 
-void ADemoMaidPlayerController::EnterLoseState()
+void ADemoMaidPlayerController::ShowLoseUI()
 {
-	if (CurrentFlowState == EFlowState::Lose)
-	{
-		return;
-	}
-
 	if (MainMenuWidget && MainMenuWidget->IsInViewport())
 	{
 		MainMenuWidget->RemoveFromParent();
@@ -532,7 +408,10 @@ void ADemoMaidPlayerController::EnterLoseState()
 
 	if (UUserWidget* Widget = EnsureWidget(LoseWidget, LoseWidgetClass))
 	{
-		Widget->AddToViewport(300);
+		if (!Widget->IsInViewport())
+		{
+			Widget->AddToViewport(300);
+		}
 	}
 
 	FInputModeUIOnly InputMode;
@@ -544,21 +423,15 @@ void ADemoMaidPlayerController::EnterLoseState()
 	SetInputMode(InputMode);
 
 	bShowMouseCursor = true;
-	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
 	SetPause(false);
 	SetGameplayInputEnabled(false);
 	SetAllEnemyAIEnabled(false);
-	SetFlowState(EFlowState::Lose);
 }
 
-void ADemoMaidPlayerController::SetFlowState(const EFlowState NewState)
-{
-	CurrentFlowState = NewState;
-	OnFlowStateChanged.Broadcast(CurrentFlowState);
-}
-
-UUserWidget* ADemoMaidPlayerController::EnsureWidget(TObjectPtr<UUserWidget>& WidgetInstance, const TSubclassOf<UUserWidget> WidgetClass)
+UUserWidget* ADemoMaidPlayerController::EnsureWidget(
+	TObjectPtr<UUserWidget>& WidgetInstance,
+	const TSubclassOf<UUserWidget> WidgetClass
+)
 {
 	if (WidgetInstance)
 	{
@@ -576,102 +449,10 @@ UUserWidget* ADemoMaidPlayerController::EnsureWidget(TObjectPtr<UUserWidget>& Wi
 
 void ADemoMaidPlayerController::SetGameplayInputEnabled(const bool bEnabled)
 {
-	// this is probably making the "snapping" upon game start, but it's the easiest way to control it for now
 	ResetIgnoreMoveInput();
 	ResetIgnoreLookInput();
-
 	SetIgnoreMoveInput(!bEnabled);
 	SetIgnoreLookInput(!bEnabled);
-}
-
-void ADemoMaidPlayerController::BindFlowSources()
-{
-	if (!BoundWaveSpawner)
-	{
-		for (TActorIterator<AEnemyWaveSpawner> It(GetWorld()); It; ++It)
-		{
-			BoundWaveSpawner = *It;
-			break;
-		}
-	}
-
-	if (BoundWaveSpawner)
-	{
-		BoundWaveSpawner->OnEnemySpawned.RemoveDynamic(this, &ADemoMaidPlayerController::HandleEnemySpawned);
-		BoundWaveSpawner->OnEnemySpawned.AddDynamic(this, &ADemoMaidPlayerController::HandleEnemySpawned);
-		BoundWaveSpawner->OnWaveCompleted.RemoveDynamic(this, &ADemoMaidPlayerController::HandleWaveCompleted);
-		BoundWaveSpawner->OnWaveCompleted.AddDynamic(this, &ADemoMaidPlayerController::HandleWaveCompleted);
-	}
-
-	BindPlayerHealth(GetPawn());
-}
-
-void ADemoMaidPlayerController::BindPlayerHealth(APawn* InPawn)
-{
-	if (BoundPlayerHealthComponent)
-	{
-		BoundPlayerHealthComponent->OnHealthDepleted.RemoveDynamic(
-			this,
-			&ADemoMaidPlayerController::HandlePlayerHealthDepleted
-		);
-		BoundPlayerHealthComponent = nullptr;
-	}
-
-	if (!InPawn)
-	{
-		return;
-	}
-
-	if (UHealthComponent* HealthComponent = InPawn->FindComponentByClass<UHealthComponent>())
-	{
-		BoundPlayerHealthComponent = HealthComponent;
-		BoundPlayerHealthComponent->OnHealthDepleted.RemoveDynamic(
-			this,
-			&ADemoMaidPlayerController::HandlePlayerHealthDepleted
-		);
-		BoundPlayerHealthComponent->OnHealthDepleted.AddDynamic(
-			this,
-			&ADemoMaidPlayerController::HandlePlayerHealthDepleted
-		);
-	}
-}
-
-void ADemoMaidPlayerController::HandleWaveCompleted()
-{
-	if (bWaitingForLoseSequence || CurrentFlowState == EFlowState::Lose)
-	{
-		return;
-	}
-
-	if (CurrentFlowState != EFlowState::Playing && CurrentFlowState != EFlowState::Paused)
-	{
-		return;
-	}
-
-	StartWinSequence();
-}
-
-void ADemoMaidPlayerController::HandleEnemySpawned(AEnemyMaid* SpawnedEnemy)
-{
-	const bool bShouldEnableAI = (CurrentFlowState == EFlowState::Playing)
-		&& !bWaitingForWinSequence
-		&& !bWaitingForLoseSequence
-		&& !bDebugDisableEnemyAI;
-	SetEnemyAIEnabled(SpawnedEnemy, bShouldEnableAI);
-}
-
-void ADemoMaidPlayerController::HandlePlayerHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser)
-{
-	(void)InHealthComponent;
-	(void)DamageCauser;
-
-	if (CurrentFlowState != EFlowState::Playing && CurrentFlowState != EFlowState::Paused)
-	{
-		return;
-	}
-
-	bWaitingForWinSequence = false;
-	StartLoseSequence();
 }
 
 void ADemoMaidPlayerController::SetAllEnemyAIEnabled(const bool bEnabled)
@@ -682,6 +463,11 @@ void ADemoMaidPlayerController::SetAllEnemyAIEnabled(const bool bEnabled)
 	{
 		SetEnemyAIEnabled(*It, bFinalEnabled);
 	}
+}
+
+void ADemoMaidPlayerController::SetEnemyAIEnabledPublic(AEnemyMaid* Enemy, const bool bEnabled)
+{
+	SetEnemyAIEnabled(Enemy, bEnabled && !bDebugDisableEnemyAI);
 }
 
 void ADemoMaidPlayerController::SetEnemyAIEnabled(AEnemyMaid* Enemy, const bool bEnabled)

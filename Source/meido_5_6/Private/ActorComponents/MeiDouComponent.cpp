@@ -1,45 +1,79 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "ActorComponents/MeiDouComponent.h"
+
 #include "ActorComponents/AttackComponent.h"
 #include "ActorComponents/LockOnComponent.h"
+#include "Characters/MaidCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "Interfaces/MeiDouSpawnConfigurable.h"
+#include "Kismet/GameplayStatics.h"
+#include "MeiDouPoseDataAsset.h"
+#include "Sound/SoundBase.h"
 #include "TimerManager.h"
 
-// Sets default values for this component's properties
 UMeiDouComponent::UMeiDouComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 }
-
 
 const TArray<EMeiDouInput>& UMeiDouComponent::GetInputBuffer() const
 {
 	return ComboInputBuffer;
 }
 
-int32 UMeiDouComponent::GetInputCount(EMeiDouInput Input) const
+int32 UMeiDouComponent::GetInputCount(const EMeiDouInput Input) const
 {
 	int32 Count = 0;
-
-	for (int32 i = 0; i < ComboInputBuffer.Num(); i++)
+	for (const EMeiDouInput Buffered : ComboInputBuffer)
 	{
-		if (ComboInputBuffer[i] == Input)
+		if (Buffered == Input)
 		{
-			Count++;
-		}
-		else
-		{
-			break;
+			++Count;
 		}
 	}
-	
 	return Count;
+}
+
+bool UMeiDouComponent::ShouldMirrorPose(const EMeiDouInput Input) const
+{
+	// Doc §9.6: CountP = how many P already in buffer; if CountP % 2 == 1 → mirror
+	// (2nd, 4th… occurrence of that pose in the string).
+	if (Input == EMeiDouInput::None)
+	{
+		return false;
+	}
+	const int32 CountAlreadyInBuffer = GetInputCount(Input);
+	return (CountAlreadyInBuffer % 2) == 1;
+}
+
+const UMeiDouPoseDataAsset* UMeiDouComponent::FindPoseData(const EMeiDouInput Input) const
+{
+	if (const TObjectPtr<UMeiDouPoseDataAsset>* Found = PoseDataMap.Find(Input))
+	{
+		return Found->Get();
+	}
+	if (const AMaidCharacter* Maid = GetMaidOwner())
+	{
+		return Maid->MeiDouPoseDataMap.FindRef(Input);
+	}
+	return nullptr;
+}
+
+UAnimMontage* UMeiDouComponent::GetFailMontage() const
+{
+	if (FailMontage)
+	{
+		return FailMontage.Get();
+	}
+	if (const AMaidCharacter* Maid = GetMaidOwner())
+	{
+		return Maid->MeiDouFailMontage;
+	}
+	return nullptr;
 }
 
 void UMeiDouComponent::BeginPlay()
@@ -48,15 +82,31 @@ void UMeiDouComponent::BeginPlay()
 	ComboInputBuffer.Reserve(MaxInputs);
 	QueuedPoseInputs.Reserve(MaxInputs);
 	ClearActiveComboDefinition();
-	ClearPendingResolvedCombo();
-	ClearPendingFailedCombo();
+	ClearPendingResult();
+	ClearPendingFail();
 	SpawnedResultActor.Reset();
 	bDestroySpawnedResultActorOnActionEnd = false;
 	ClearComboInputTimeout();
 	SetMeiDouState(EMeiDouState::EMDS_Idle);
+
+	if (bPreloadResultsOnBeginPlay)
+	{
+		PreloadResults();
+	}
 }
 
-bool UMeiDouComponent::RegisterInput(EMeiDouInput Input)
+void UMeiDouComponent::PreloadResults()
+{
+	if (ComboData)
+	{
+		ComboData->PreloadSpawnClasses();
+	}
+
+	bResultsPreloaded = true;
+	DebugMessage(TEXT("MeiDou: result spawn classes preloaded"), FColor::Cyan, 1.5f);
+}
+
+bool UMeiDouComponent::RegisterInput(const EMeiDouInput Input)
 {
 	if (Input == EMeiDouInput::None)
 	{
@@ -68,20 +118,23 @@ bool UMeiDouComponent::RegisterInput(EMeiDouInput Input)
 		return false;
 	}
 
+	// Committing a pose cancels the inter-pose wait timer (new input is progress).
 	ClearComboInputTimeout();
 	QueuedPoseInputs.Add(Input);
-	TryConsumeNextQueuedAction();
-
+	AdvanceFromIdle();
 	return true;
 }
 
 void UMeiDouComponent::OnMeiDouActionWindowBegin()
 {
+	// Policy 1: never run inter-pose timeout during pose/result window.
+	ClearComboInputTimeout();
+
 	OnMeiDouControlLockChanged.Broadcast(true);
 
-	if (HasActiveComboDefinition())
+	if (bHasActiveComboDefinition)
 	{
-		SetMeiDouState(EMeiDouState::EMDS_Finished);
+		SetMeiDouState(EMeiDouState::EMDS_Result);
 		return;
 	}
 
@@ -102,13 +155,14 @@ void UMeiDouComponent::OnMeiDouActionWindowEnd()
 
 	CleanupSpawnedResultActor();
 
-	if (MeiDouState == EMeiDouState::EMDS_Finished)
+	if (MeiDouState == EMeiDouState::EMDS_Result)
 	{
 		ClearActiveComboDefinition();
 	}
 
+	// Policy 2: return to Idle after pose/result ends; Advance arms timeout only if still waiting.
 	SetMeiDouState(EMeiDouState::EMDS_Idle);
-	TryConsumeNextQueuedAction();
+	AdvanceFromIdle();
 }
 
 void UMeiDouComponent::OnRequestedAnimationFailed()
@@ -125,13 +179,13 @@ void UMeiDouComponent::OnRequestedAnimationFailed()
 
 	CleanupSpawnedResultActor();
 
-	if (MeiDouState == EMeiDouState::EMDS_Finished)
+	if (MeiDouState == EMeiDouState::EMDS_Result)
 	{
 		ClearActiveComboDefinition();
 	}
 
 	SetMeiDouState(EMeiDouState::EMDS_Idle);
-	TryConsumeNextQueuedAction();
+	AdvanceFromIdle();
 }
 
 void UMeiDouComponent::ResetCombo()
@@ -140,7 +194,18 @@ void UMeiDouComponent::ResetCombo()
 	ClearComboInputTimeout();
 }
 
-void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
+void UMeiDouComponent::ResetComboAndNotify(const EMeiDouBufferChangeReason Reason)
+{
+	ResetCombo();
+	NotifyBufferChanged(Reason);
+}
+
+void UMeiDouComponent::NotifyBufferChanged(const EMeiDouBufferChangeReason Reason)
+{
+	OnMeiDouBufferChanged.Broadcast(ComboInputBuffer, Reason);
+}
+
+void UMeiDouComponent::HandleAnimEvent(const EMeiDouAnimEvent EventKey)
 {
 	AActor* OwnerActor = GetOwner();
 	UAttackComponent* AttackComponent = OwnerActor
@@ -150,12 +215,9 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 	switch (EventKey)
 	{
 	case EMeiDouAnimEvent::EMDAE_Spawn:
-		if (!HasActiveComboDefinition())
+		if (!bHasActiveComboDefinition)
 		{
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("MeiDou Spawn notify ignored: no active combo"));
-			}
+			DebugMessage(TEXT("MeiDou Spawn notify ignored: no active combo"), FColor::Red);
 			return;
 		}
 
@@ -163,27 +225,26 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 		{
 			ExecuteSpawnResult(ActiveComboDefinition.SpawnConfig);
 		}
-		else if (GEngine)
+		else
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("MeiDou Spawn notify ignored: result is not Spawn"));
+			DebugMessage(TEXT("MeiDou Spawn notify ignored: result is not Spawn"), FColor::Yellow);
 		}
 		break;
+
 	case EMeiDouAnimEvent::EMDAE_ControlEnable:
 	case EMeiDouAnimEvent::EMDAE_ControlDisable:
 		break;
+
 	case EMeiDouAnimEvent::EMDAE_TraceStart:
 	{
-		if (!HasActiveComboDefinition() || ActiveComboDefinition.ResultType != EMeiDouResultType::EMDRT_Damage)
+		if (!bHasActiveComboDefinition || ActiveComboDefinition.ResultType != EMeiDouResultType::EMDRT_Damage)
 		{
 			break;
 		}
 
 		if (!AttackComponent)
 		{
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("MeiDou TraceStart ignored: missing AttackComponent"));
-			}
+			DebugMessage(TEXT("MeiDou TraceStart ignored: missing AttackComponent"), FColor::Red);
 			break;
 		}
 
@@ -198,6 +259,7 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 		AttackComponent->OpenHitWindowSockets(DamageSockets);
 		break;
 	}
+
 	case EMeiDouAnimEvent::EMDAE_TraceEnd:
 	{
 		if (!AttackComponent)
@@ -205,7 +267,7 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 			break;
 		}
 
-		if (!HasActiveComboDefinition() || ActiveComboDefinition.ResultType != EMeiDouResultType::EMDRT_Damage)
+		if (!bHasActiveComboDefinition || ActiveComboDefinition.ResultType != EMeiDouResultType::EMDRT_Damage)
 		{
 			break;
 		}
@@ -213,6 +275,7 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 		AttackComponent->CloseHitWindow();
 		break;
 	}
+
 	default:
 		break;
 	}
@@ -220,12 +283,7 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 
 const FMeiDouComboDefinition* UMeiDouComponent::GetActiveComboDefinition() const
 {
-	if (!HasActiveComboDefinition())
-	{
-		return nullptr;
-	}
-
-	return &ActiveComboDefinition;
+	return bHasActiveComboDefinition ? &ActiveComboDefinition : nullptr;
 }
 
 void UMeiDouComponent::SetMeiDouState(const EMeiDouState NewState)
@@ -239,38 +297,23 @@ void UMeiDouComponent::SetMeiDouState(const EMeiDouState NewState)
 	OnMeiDouStateChanged.Broadcast(MeiDouState);
 }
 
-bool UMeiDouComponent::HasActiveComboDefinition() const
-{
-	return bHasActiveComboDefinition;
-}
-
-bool UMeiDouComponent::HasPendingResolvedCombo() const
-{
-	return bHasPendingResolvedCombo;
-}
-
-bool UMeiDouComponent::HasPendingFailedCombo() const
-{
-	return bHasPendingFailedCombo;
-}
-
 void UMeiDouComponent::ClearActiveComboDefinition()
 {
 	ActiveComboDefinition = FMeiDouComboDefinition();
 	bHasActiveComboDefinition = false;
 }
 
-void UMeiDouComponent::ClearPendingResolvedCombo()
+void UMeiDouComponent::ClearPendingResult()
 {
-	PendingResolvedComboDefinition = FMeiDouComboDefinition();
-	PendingResolvedComboResult = FMeiDouResolvedCombo();
-	bHasPendingResolvedCombo = false;
+	PendingResultDefinition = FMeiDouComboDefinition();
+	PendingResultPayload = FMeiDouResolvedCombo();
+	bHasPendingResult = false;
 }
 
-void UMeiDouComponent::ClearPendingFailedCombo()
+void UMeiDouComponent::ClearPendingFail()
 {
-	PendingFailedComboResult = FMeiDouResolvedCombo();
-	bHasPendingFailedCombo = false;
+	PendingFailPayload = FMeiDouResolvedCombo();
+	bHasPendingFail = false;
 }
 
 void UMeiDouComponent::CleanupSpawnedResultActor()
@@ -296,11 +339,28 @@ void UMeiDouComponent::CleanupSpawnedResultActor()
 	bDestroySpawnedResultActorOnActionEnd = false;
 }
 
-void UMeiDouComponent::RestartComboInputTimeout()
+void UMeiDouComponent::ArmInterPoseTimeoutIfWaiting()
 {
 	if (ComboInputTimeoutSeconds <= 0.f)
 	{
 		return;
+	}
+
+	if (bTimeoutOnlyWhileIdleWaiting)
+	{
+		// Policy 1+2: only while Idle, after a pose finished, waiting for the next input.
+		if (MeiDouState != EMeiDouState::EMDS_Idle)
+		{
+			return;
+		}
+		if (QueuedPoseInputs.Num() > 0 || bHasPendingResult || bHasPendingFail)
+		{
+			return;
+		}
+		if (ComboInputBuffer.Num() <= 0 || ComboInputBuffer.Num() >= MaxInputs)
+		{
+			return;
+		}
 	}
 
 	UWorld* World = GetWorld();
@@ -316,41 +376,49 @@ void UMeiDouComponent::RestartComboInputTimeout()
 		ComboInputTimeoutSeconds,
 		false
 	);
+
+	DebugMessage(
+		FString::Printf(TEXT("MeiDou: inter-pose timeout armed (%.2fs)"), ComboInputTimeoutSeconds),
+		FColor::Cyan,
+		1.0f
+	);
 }
 
 void UMeiDouComponent::ClearComboInputTimeout()
 {
-	UWorld* World = GetWorld();
-	if (!World)
+	if (UWorld* World = GetWorld())
 	{
-		return;
+		World->GetTimerManager().ClearTimer(ComboInputTimeoutHandle);
 	}
-
-	World->GetTimerManager().ClearTimer(ComboInputTimeoutHandle);
 }
 
 void UMeiDouComponent::OnComboInputTimeout()
 {
-	if (ComboInputBuffer.Num() <= 0)
+	// Guard: never apply timeout mid-pose/result even if a stale timer fired.
+	if (bTimeoutOnlyWhileIdleWaiting && MeiDouState != EMeiDouState::EMDS_Idle)
 	{
 		return;
 	}
 
-	if (GEngine)
+	if (ComboInputBuffer.Num() <= 0 && QueuedPoseInputs.Num() <= 0)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Yellow, TEXT("MeiDou combo timeout: buffer reset"));
+		return;
 	}
 
-	ResetCombo();
+	DebugMessage(TEXT("MeiDou combo timeout: buffer + queue reset"), FColor::Yellow, 1.5f);
+	QueuedPoseInputs.Reset();
+	ResetComboAndNotify(EMeiDouBufferChangeReason::ClearedTimeout);
 }
 
-void UMeiDouComponent::TryConsumeNextQueuedAction()
+void UMeiDouComponent::AdvanceFromIdle()
 {
+	// Only advance the pipeline while Idle. Posing/Result wait for notifies.
 	if (MeiDouState != EMeiDouState::EMDS_Idle)
 	{
 		return;
 	}
 
+	// 1) Next pose from input queue
 	if (QueuedPoseInputs.Num() > 0)
 	{
 		ClearComboInputTimeout();
@@ -358,57 +426,65 @@ void UMeiDouComponent::TryConsumeNextQueuedAction()
 		const EMeiDouInput NextInput = QueuedPoseInputs[0];
 		QueuedPoseInputs.RemoveAt(0);
 
-		const int32 NextInputCount = GetInputCount(NextInput) + 1;
-		RegisterInputToComboBuffer(NextInput);
+		// Mirror before append (ShouldMirrorPose reads buffer as-is).
+		const bool bMirror = ShouldMirrorPose(NextInput);
+		AppendToComboBuffer(NextInput); // notifies PoseAdded (+ clear reason if resolved)
 
 		FMeiDouPoseAnimationRequest Request;
 		Request.Input = NextInput;
-		Request.bUseMirroredMontage = (NextInputCount % 2 == 0);
+		Request.bUseMirroredMontage = bMirror;
 
+		// Entering pose: no inter-pose timer (policy 1).
+		ClearComboInputTimeout();
 		SetMeiDouState(EMeiDouState::EMDS_Posing);
+		PlayPoseSfx(NextInput, bMirror);
 		OnPoseAnimationRequested.Broadcast(Request);
+		PresentPose(Request);
 		return;
 	}
 
-	if (HasPendingResolvedCombo())
+	// 2) Pending success → Result presentation
+	if (bHasPendingResult)
 	{
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(
-				-1,
-				1.5f,
-				FColor::Yellow,
-				TEXT("MeiDou: entering combo execution phase")
-			);
-		}
+		ClearComboInputTimeout();
 
-		ActiveComboDefinition = PendingResolvedComboDefinition;
+		ActiveComboDefinition = PendingResultDefinition;
 		bHasActiveComboDefinition = true;
-		const FMeiDouResolvedCombo ResolvedResult = PendingResolvedComboResult;
-		ClearPendingResolvedCombo();
+		const FMeiDouResolvedCombo ResolvedResult = PendingResultPayload;
+		ClearPendingResult();
 
-		SetMeiDouState(EMeiDouState::EMDS_Finished);
+		SetMeiDouState(EMeiDouState::EMDS_Result);
+		PlayMeiDouSfx(SuccessSfx.Get());
 		OnComboResolved.Broadcast(ResolvedResult);
+		PresentResult(ResolvedResult);
+		DebugMessage(
+			FString::Printf(TEXT("MeiDou SUCCESS: %s"), *ResolvedResult.ComboId.ToString()),
+			FColor::Green
+		);
 		return;
 	}
 
-	if (HasPendingFailedCombo())
+	// 3) Pending fail → berrinche
+	if (bHasPendingFail)
 	{
-		const FMeiDouResolvedCombo FailedResult = PendingFailedComboResult;
-		ClearPendingFailedCombo();
+		ClearComboInputTimeout();
 
+		const FMeiDouResolvedCombo FailedResult = PendingFailPayload;
+		ClearPendingFail();
+
+		PlayMeiDouSfx(FailSfx.Get());
 		OnComboFailed.Broadcast(FailedResult);
+		PresentFail(FailedResult);
+		DebugMessage(TEXT("MeiDou FAIL"), FColor::Red);
 		return;
 	}
 
-	// idle with a partial combo buffer waiting for the next input.
-	if (ComboInputBuffer.Num() > 0)
-	{
-		RestartComboInputTimeout();
-	}
+	// 4) Partial buffer, nothing else to do → arm timeout from *this* idle moment
+	//    (typically right after pose ActionWindowEnd). Policy 2.
+	ArmInterPoseTimeoutIfWaiting();
 }
 
-bool UMeiDouComponent::RegisterInputToComboBuffer(EMeiDouInput Input)
+bool UMeiDouComponent::AppendToComboBuffer(const EMeiDouInput Input)
 {
 	if (ComboInputBuffer.Num() >= MaxInputs)
 	{
@@ -416,80 +492,135 @@ bool UMeiDouComponent::RegisterInputToComboBuffer(EMeiDouInput Input)
 	}
 
 	ComboInputBuffer.Add(Input);
+	NotifyBufferChanged(EMeiDouBufferChangeReason::PoseAdded);
 
 	if (ComboInputBuffer.Num() == MaxInputs)
 	{
-		return TryResolve();
+		return TryResolveBuffer();
 	}
 
 	return false;
 }
 
-bool UMeiDouComponent::TryResolve()
+bool UMeiDouComponent::TryResolveBuffer()
 {
-	if (!ComboData || ComboInputBuffer.Num() != 3)
+	if (!ComboData || ComboInputBuffer.Num() != MaxInputs)
 	{
 		return false;
 	}
 
-	FMeiDouComboKey Key;
-	Key.A = ComboInputBuffer[0];
-	Key.B = ComboInputBuffer[1];
-	Key.C = ComboInputBuffer[2];
-
-	if (const FMeiDouComboDefinition* Def = ComboData->Combos.Find(Key))
+	if (const FMeiDouComboDefinition* Def = ComboData->FindDefinition(ComboInputBuffer))
 	{
-		ExecuteResolvedCombo(*Def);
-
-		PendingResolvedComboResult.ComboId = Def->ComboId;
-		PendingResolvedComboResult.Inputs = ComboInputBuffer;
-
-		if (GEngine)
-		{
-			const FString SuccessMessage = FString::Printf(
-				TEXT("MeiDou combo SUCCESS: %s"),
-				*Def->ComboId.ToString()
-			);
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, SuccessMessage);
-		}
-
-		ResetCombo();
+		QueueSuccess(*Def);
+		PendingResultPayload.ComboId = Def->ComboId;
+		PendingResultPayload.Inputs = ComboInputBuffer;
+		ResetComboAndNotify(EMeiDouBufferChangeReason::ClearedSuccess);
 		return true;
 	}
 
-	if (GEngine)
-	{
-		const FString FailMessage = FString::Printf(
-			TEXT("MeiDou combo FAIL: [%s, %s, %s]"),
-			*StaticEnum<EMeiDouInput>()->GetNameStringByValue(static_cast<int64>(Key.A)),
-			*StaticEnum<EMeiDouInput>()->GetNameStringByValue(static_cast<int64>(Key.B)),
-			*StaticEnum<EMeiDouInput>()->GetNameStringByValue(static_cast<int64>(Key.C))
-		);
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, FailMessage);
-	}
-
-	PendingFailedComboResult.ComboId = NAME_None;
-	PendingFailedComboResult.Inputs = ComboInputBuffer;
-	bHasPendingFailedCombo = true;
-
-	// if combo doesn't exist, queue fail result and reset input
-	ResetCombo();
+	QueueFail();
+	PendingFailPayload.ComboId = NAME_None;
+	PendingFailPayload.Inputs = ComboInputBuffer;
+	ResetComboAndNotify(EMeiDouBufferChangeReason::ClearedFail);
 	return false;
 }
 
-void UMeiDouComponent::ExecuteResolvedCombo(const FMeiDouComboDefinition& Definition)
+void UMeiDouComponent::QueueSuccess(const FMeiDouComboDefinition& Definition)
 {
-	PendingResolvedComboDefinition = Definition;
-	bHasPendingResolvedCombo = true;
+	PendingResultDefinition = Definition;
+	bHasPendingResult = true;
+}
+
+void UMeiDouComponent::QueueFail()
+{
+	bHasPendingFail = true;
+}
+
+void UMeiDouComponent::PresentPose(const FMeiDouPoseAnimationRequest& Request)
+{
+	if (AMaidCharacter* Maid = GetMaidOwner())
+	{
+		Maid->PlayMeiDouPose(Request);
+	}
+}
+
+void UMeiDouComponent::PresentResult(const FMeiDouResolvedCombo& Result)
+{
+	if (AMaidCharacter* Maid = GetMaidOwner())
+	{
+		Maid->PlayMeiDouResult(Result);
+	}
+}
+
+void UMeiDouComponent::PresentFail(const FMeiDouResolvedCombo& Result)
+{
+	if (AMaidCharacter* Maid = GetMaidOwner())
+	{
+		Maid->PlayMeiDouFail(Result);
+	}
+}
+
+void UMeiDouComponent::PlayMeiDouSfx(USoundBase* Sound) const
+{
+	if (!Sound)
+	{
+		return;
+	}
+
+	AActor* OwnerActor = GetOwner();
+	UWorld* World = GetWorld();
+	if (!OwnerActor || !World)
+	{
+		return;
+	}
+
+	UGameplayStatics::PlaySoundAtLocation(World, Sound, OwnerActor->GetActorLocation());
+}
+
+void UMeiDouComponent::PlayPoseSfx(const EMeiDouInput Input, const bool bMirrored) const
+{
+	const UMeiDouPoseDataAsset* Pose = FindPoseData(Input);
+	if (!Pose)
+	{
+		return;
+	}
+
+	USoundBase* Sound = nullptr;
+	if (bMirrored && Pose->MirroredPoseSfx)
+	{
+		Sound = Pose->MirroredPoseSfx.Get();
+	}
+	else
+	{
+		Sound = Pose->PoseSfx.Get();
+	}
+
+	PlayMeiDouSfx(Sound);
+}
+
+AMaidCharacter* UMeiDouComponent::GetMaidOwner() const
+{
+	return Cast<AMaidCharacter>(GetOwner());
+}
+
+void UMeiDouComponent::DebugMessage(const FString& Message, const FColor& Color, const float Time) const
+{
+	if (!bDrawDebugMeiDou || !GEngine)
+	{
+		return;
+	}
+	GEngine->AddOnScreenDebugMessage(-1, Time, Color, Message);
 }
 
 void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 {
 	UWorld* World = GetWorld();
 	AActor* OwnerActor = GetOwner();
-	
-	if (!World || !OwnerActor || !SpawnConfig.SpawnedActorClass)
+	UClass* SpawnClass = SpawnConfig.ResolveSpawnClass();
+
+	if (!World || !OwnerActor || !SpawnClass)
 	{
+		DebugMessage(TEXT("MeiDou Spawn ignored: no owner/world/class (set Soft or hard SpawnedActorClass)"), FColor::Red);
 		return;
 	}
 
@@ -504,7 +635,7 @@ void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 	APawn* InstigatorPawn = Cast<APawn>(OwnerActor);
 
 	AActor* SpawnedActor = World->SpawnActorDeferred<AActor>(
-		SpawnConfig.SpawnedActorClass,
+		SpawnClass,
 		SpawnTransform,
 		OwnerActor,
 		InstigatorPawn,
@@ -512,14 +643,11 @@ void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 	);
 	if (!SpawnedActor)
 	{
-		if (GEngine)
-		{
-			const FString FailMessage = FString::Printf(
-				TEXT("MeiDou Spawn failed: could not defer spawn %s"),
-				*GetNameSafe(SpawnConfig.SpawnedActorClass.Get())
-			);
-			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Red, FailMessage);
-		}
+		DebugMessage(
+			FString::Printf(TEXT("MeiDou Spawn failed: %s"), *GetNameSafe(SpawnClass)),
+			FColor::Red,
+			2.5f
+		);
 		return;
 	}
 
@@ -537,14 +665,7 @@ void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 	}
 
 	SpawnedActor->FinishSpawning(SpawnTransform);
-	if (GEngine)
-	{
-		const FString SuccessMessage = FString::Printf(
-			TEXT("MeiDou Spawned: %s"),
-			*GetNameSafe(SpawnedActor)
-		);
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, SuccessMessage);
-	}
+	DebugMessage(FString::Printf(TEXT("MeiDou Spawned: %s"), *GetNameSafe(SpawnedActor)), FColor::Green);
 
 	SpawnedResultActor = SpawnedActor;
 	bDestroySpawnedResultActorOnActionEnd = SpawnConfig.bDestroyWhenPoseActiveEnds;

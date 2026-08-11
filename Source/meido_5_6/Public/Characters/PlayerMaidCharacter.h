@@ -12,9 +12,10 @@ class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
 class UMaidCameraManagerComponent;
+class UMeiDouPoseBubbleComponent;
 
 /**
- * 
+ * Playground / product player. Owns player-only UI like MeiDou pose bubble (CP3.5).
  */
 UCLASS()
 class MEIDO_5_6_API APlayerMaidCharacter : public AMaidCharacter, public ICombatTeamSource
@@ -25,6 +26,9 @@ public:
 	APlayerMaidCharacter();
 
 	virtual ECombatTeam GetCombatTeam_Implementation() const override;
+
+	UFUNCTION(BlueprintPure, Category = "MeiDou|UI")
+	UMeiDouPoseBubbleComponent* GetPoseBubbleComponent() const { return PoseBubbleComponent; }
 	
 protected:
 	virtual void BeginPlay() override;
@@ -97,6 +101,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	UMaidCameraManagerComponent* CameraManager;
+
+	/** Player-only speech bubble for poses (not on enemies). Assign Bubble Widget Class in BP. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeiDou|UI")
+	TObjectPtr<UMeiDouPoseBubbleComponent> PoseBubbleComponent;
 
 	bool bWasLockOnActive = false;
 

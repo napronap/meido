@@ -3,6 +3,7 @@
 #include "PlayerControllers/MeidoPlayerController.h"
 
 #include "ActorComponents/HealthComponent.h"
+#include "ActorComponents/MeiDouComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "UI/MeidoHUD.h"
 
@@ -102,6 +103,7 @@ void AMeidoPlayerController::HideMeidoHUD()
 	if (MeidoHUD)
 	{
 		MeidoHUD->UnbindHealth();
+		MeidoHUD->UnbindMeiDou();
 		MeidoHUD->RemoveFromParent();
 		MeidoHUD = nullptr;
 	}
@@ -115,10 +117,13 @@ void AMeidoPlayerController::BindHUDToPawn(APawn* InPawn)
 	}
 
 	UHealthComponent* Health = nullptr;
+	UMeiDouComponent* MeiDou = nullptr;
 	if (InPawn)
 	{
 		Health = InPawn->FindComponentByClass<UHealthComponent>();
+		MeiDou = InPawn->FindComponentByClass<UMeiDouComponent>();
 	}
 
 	MeidoHUD->BindToHealth(Health);
+	MeidoHUD->BindToMeiDou(MeiDou);
 }

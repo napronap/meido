@@ -6,13 +6,14 @@
 class AActor;
 class UAnimMontage;
 
-// simple types to figure out in what state the component is
+/** Component FSM (CP3.1). Idle → Posing → Result|Fail → Idle. */
 UENUM(BlueprintType)
 enum class EMeiDouState : uint8
 {
 	EMDS_Idle UMETA(DisplayName = "Idle"),
 	EMDS_Posing UMETA(DisplayName = "Posing"),
-	EMDS_Finished UMETA(DisplayName = "Result"),
+	/** Result technique montage / active definition window. Was EMDS_Finished. */
+	EMDS_Result UMETA(DisplayName = "Result"),
 };
 
 // simple types to figure out in what state the result ability is
@@ -65,13 +66,28 @@ enum class EMeiDouAnimEvent : uint8
 	
 };
 
-// spawn-type resolutions need this config to figure out what and how to spawn it
+/**
+ * Spawn-type result config.
+ * CP3.2: prefer SoftSpawnedActorClass + PreloadResults on the component so the first
+ * MKN/MMK spawn does not hitch mid-fight. Hard SpawnedActorClass remains as legacy.
+ */
 USTRUCT(BlueprintType)
 struct FMeiDouSpawnConfig
 {
 	GENERATED_BODY()
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+
+	/**
+	 * Preferred (CP3.2). Soft path — load via PreloadResults / ResolveSpawnClass,
+	 * not the first combat Spawn notify.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou|Spawn")
+	TSoftClassPtr<AActor> SoftSpawnedActorClass;
+
+	/**
+	 * Legacy hard ref. Still works; loading the DA may pull the class early.
+	 * Prefer Soft + empty hard for hitch control.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou|Spawn")
 	TSubclassOf<AActor> SpawnedActorClass = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
@@ -89,6 +105,29 @@ struct FMeiDouSpawnConfig
 	// If true, this spawned actor will be told to end and optionally destroyed when PoseActive notify state ends.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	bool bDestroyWhenPoseActiveEnds = false;
+
+	/** Soft (load if needed) first, then hard class. */
+	UClass* ResolveSpawnClass() const
+	{
+		if (!SoftSpawnedActorClass.IsNull())
+		{
+			if (UClass* Loaded = SoftSpawnedActorClass.Get())
+			{
+				return Loaded;
+			}
+			return SoftSpawnedActorClass.LoadSynchronous();
+		}
+		return SpawnedActorClass.Get();
+	}
+
+	/** Force soft class into memory (no-op if only hard ref). */
+	void PreloadSpawnClass() const
+	{
+		if (!SoftSpawnedActorClass.IsNull())
+		{
+			SoftSpawnedActorClass.LoadSynchronous();
+		}
+	}
 };
 
 // minimal damage config
@@ -106,8 +145,10 @@ struct FMeiDouDamageConfig
 	TArray<FName> SocketNames;
 };
 
-// key for the value of the combo
-// A B and C represent the inputs in order
+/**
+ * Legacy TMap key (A/B/C). Prefer FMeiDouRecipe + TArray on the DA (CP3.1).
+ * Kept for content that still has Combos map filled.
+ */
 USTRUCT(BlueprintType)
 struct FMeiDouComboKey
 {
@@ -122,15 +163,12 @@ struct FMeiDouComboKey
 	UPROPERTY(EditAnywhere)
 	EMeiDouInput C = EMeiDouInput::None;
 
-	// overload the == operator when comparing two structs of type FMeiDouComboKey
 	bool operator==(const FMeiDouComboKey& Other) const
 	{
 		return A == Other.A && B == Other.B && C == Other.C;
 	}
 };
 
-// overrides the hashing of keys of type FMeiDouComboKey so when you try to index a TMap with a key
-// that is of type FMeiDouComboKey& it will use this function to translate it
 FORCEINLINE uint32 GetTypeHash(const FMeiDouComboKey& Key)
 {
 	return HashCombine(
@@ -139,7 +177,7 @@ FORCEINLINE uint32 GetTypeHash(const FMeiDouComboKey& Key)
 	);
 }
 
-// the real value of the combo. can have information about the combo like damage, usage of resources, etc
+/** Payload of a recipe: result montage + spawn/damage config. */
 USTRUCT(BlueprintType)
 struct FMeiDouComboDefinition
 {
@@ -159,4 +197,37 @@ struct FMeiDouComboDefinition
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(EditCondition="ResultType == EMeiDouResultType::EMDRT_Damage", EditConditionHides))
 	FMeiDouDamageConfig DamageConfig;
+};
+
+/**
+ * One castable technique (CP3.1). Editor-friendly list row.
+ * Sequence length is 3 for the demo (MMK / MKN / NNN); Find matches full buffer.
+ */
+USTRUCT(BlueprintType)
+struct FMeiDouRecipe
+{
+	GENERATED_BODY()
+
+	/** Ordered pose inputs (e.g. Moe, Moe, Kyun). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou")
+	TArray<EMeiDouInput> Sequence;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou")
+	FMeiDouComboDefinition Definition;
+
+	bool Matches(const TArray<EMeiDouInput>& Buffer) const
+	{
+		if (Sequence.Num() != Buffer.Num() || Sequence.Num() == 0)
+		{
+			return false;
+		}
+		for (int32 i = 0; i < Sequence.Num(); ++i)
+		{
+			if (Sequence[i] != Buffer[i])
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 };

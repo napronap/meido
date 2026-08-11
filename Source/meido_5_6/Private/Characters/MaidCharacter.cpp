@@ -108,23 +108,10 @@ void AMaidCharacter::BeginPlay()
 		HealthComponent->OnHealthDepleted.AddDynamic(this, &AMaidCharacter::HandleHealthDepleted);
 	}
 
+	// CP3.1: pose/result/fail presentation is cast-driven from MeiDouComponent.
+	// Control lock still uses multicast (State + move stop).
 	if (MeiDouComponent)
 	{
-		MeiDouComponent->OnPoseAnimationRequested.AddDynamic(
-			this,
-			&AMaidCharacter::HandleMeiDouPoseAnimationRequested
-		);
-
-		MeiDouComponent->OnComboResolved.AddDynamic(
-			this,
-			&AMaidCharacter::HandleMeiDouComboResolved
-		);
-
-		MeiDouComponent->OnComboFailed.AddDynamic(
-			this,
-			&AMaidCharacter::HandleMeiDouComboFailed
-		);
-
 		MeiDouComponent->OnMeiDouControlLockChanged.AddDynamic(
 			this,
 			&AMaidCharacter::HandleMeiDouControlLockChanged
@@ -692,14 +679,14 @@ void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 	MeiDouComponent->RegisterInput(Input);
 }
 
-void AMaidCharacter::HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimationRequest& Request)
+void AMaidCharacter::PlayMeiDouPose(const FMeiDouPoseAnimationRequest& Request)
 {
 	if (!MeiDouComponent)
 	{
 		return;
 	}
 
-	const UMeiDouPoseDataAsset* Pose = MeiDouPoseDataMap.FindRef(Request.Input);
+	const UMeiDouPoseDataAsset* Pose = MeiDouComponent->FindPoseData(Request.Input);
 	if (!Pose)
 	{
 		MeiDouComponent->OnRequestedAnimationFailed();
@@ -722,7 +709,7 @@ void AMaidCharacter::HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimati
 	}
 }
 
-void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result)
+void AMaidCharacter::PlayMeiDouResult(const FMeiDouResolvedCombo& /*Result*/)
 {
 	if (!MeiDouComponent)
 	{
@@ -731,70 +718,28 @@ void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Resul
 
 	SetMeiDouMirrorFlag(GetMesh(), false);
 
-	if (const FMeiDouComboDefinition* ComboDefinition = MeiDouComponent->GetActiveComboDefinition())
+	const FMeiDouComboDefinition* ComboDefinition = MeiDouComponent->GetActiveComboDefinition();
+	if (!ComboDefinition || !ComboDefinition->AnimationMontage)
 	{
-		if (ComboDefinition->AnimationMontage)
-		{
-			// play result montages from their default start, unlike pose inputs that always use "Pose" section
-			// TODO: make more consistent (either start all from "Pose" or not)
-			const float MontageLength = PlayAnimMontage(ComboDefinition->AnimationMontage, 1.f);
-			if (MontageLength <= 0.f)
-			{
-				UE_LOG(
-					LogTemp,
-					Warning,
-					TEXT("Could not play MeiDou result montage for combo '%s'. Check montage slot setup."),
-					*ComboDefinition->ComboId.ToString()
-				);
-				if (GEngine)
-				{
-					const FString FailMessage = FString::Printf(
-						TEXT("MeiDou result montage failed: %s"),
-						*GetNameSafe(ComboDefinition->AnimationMontage)
-					);
-					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, FailMessage);
-				}
-				MeiDouComponent->OnRequestedAnimationFailed();
-			}
-		}
-		else
-		{
-			MeiDouComponent->OnRequestedAnimationFailed();
-		}
-	}
-	else
-	{
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(
-				-1,
-				2.0f,
-				FColor::Red,
-				TEXT("MeiDou Combo Resolved but no active definition")
-			);
-		}
 		MeiDouComponent->OnRequestedAnimationFailed();
-	}
-
-	if (!GEngine)
-	{
 		return;
 	}
 
-	const FString Message = FString::Printf(
-		TEXT("MeiDou Combo Resolved: %s"),
-		*Result.ComboId.ToString()
-	);
-
-	GEngine->AddOnScreenDebugMessage(
-		-1,
-		2.5f,
-		FColor::Green,
-		Message
-	);
+	// Result montages from default start (poses use section "Pose").
+	const float MontageLength = PlayAnimMontage(ComboDefinition->AnimationMontage, 1.f);
+	if (MontageLength <= 0.f)
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("Could not play MeiDou result montage for combo '%s'. Check montage slot setup."),
+			*ComboDefinition->ComboId.ToString()
+		);
+		MeiDouComponent->OnRequestedAnimationFailed();
+	}
 }
 
-void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
+void AMaidCharacter::PlayMeiDouFail(const FMeiDouResolvedCombo& /*Result*/)
 {
 	if (!MeiDouComponent)
 	{
@@ -810,14 +755,15 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 
 	ApplyGameplayStateMeiDouFailed();
 
-	if (!MeiDouFailMontage)
+	UAnimMontage* FailMontage = MeiDouComponent->GetFailMontage();
+	if (!FailMontage)
 	{
 		ApplyGameplayStateIdle();
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
 	}
 
-	const float MontageLength = PlayAnimMontage(MeiDouFailMontage, 1.f);
+	const float MontageLength = PlayAnimMontage(FailMontage, 1.f);
 	if (MontageLength <= 0.f)
 	{
 		ApplyGameplayStateIdle();
@@ -826,27 +772,14 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 			Warning,
 			TEXT("Could not play MeiDou fail montage. Check montage slot setup.")
 		);
-
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
 	}
 
 	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
 	{
-		AnimInstance->Montage_SetEndDelegate(OnMeiDouFailMontageEnded, MeiDouFailMontage);
+		AnimInstance->Montage_SetEndDelegate(OnMeiDouFailMontageEnded, FailMontage);
 	}
-
-	if (!GEngine)
-	{
-		return;
-	}
-
-	GEngine->AddOnScreenDebugMessage(
-		-1,
-		2.0f,
-		FColor::Yellow,
-		TEXT("MeiDou combo failed")
-	);
 }
 
 void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)

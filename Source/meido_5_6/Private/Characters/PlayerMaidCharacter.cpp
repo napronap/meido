@@ -12,6 +12,7 @@
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "UI/MeiDouPoseBubbleComponent.h"
 
 APlayerMaidCharacter::APlayerMaidCharacter()
 {
@@ -33,6 +34,11 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	ViewCamera->SetupAttachment(CameraBoom);
 
 	CameraManager = CreateDefaultSubobject<UMaidCameraManagerComponent>(TEXT("CameraManager"));
+
+	// CP3.5: pose bubble is player-only (enemies with MeiDou later won't get this).
+	PoseBubbleComponent = CreateDefaultSubobject<UMeiDouPoseBubbleComponent>(TEXT("PoseBubbleComponent"));
+	PoseBubbleComponent->SetupAttachment(GetRootComponent());
+	PoseBubbleComponent->SetRelativeLocation(FVector(0.f, 0.f, 110.f));
 
 	// CP0.1 smoke: on-screen Overall / Attack / Health (disable on component if noisy)
 	if (CharacterStateComponent)

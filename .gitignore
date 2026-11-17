@@ -73,3 +73,9 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+## Don't ignore dlls from vrm4u
+!Plugins/VRM4U/ThirdParty/**
+
+vars.bat
+.idea/

@@ -1,0 +1,12 @@
+@echo off
+
+set ROOTDIR=%~dp0
+set ROOTDIR=%ROOTDIR:~0,-1%
+
+set PROJECT=meido_5_6
+set PROJECT_DIR=%ROOTDIR%\%PROJECT%
+set UPROJECT_PATH=%ROOTDIR%\%PROJECT%.uproject
+
+set UE56_DIR=YOUR_UE_5.6_DIR
+set UE56_EDITOR_EXE=%UE56_DIR%\Engine\Binaries\Win64\UnrealEditor.exe
+set BUILD_BAT=%UE56_DIR%\Engine\Build\BatchFiles\Build.bat

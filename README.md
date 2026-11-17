@@ -4,11 +4,11 @@
 
 Moe Attack started from a question: what if the maid café "moe moe kyun" were a combat system? The player inputs three poses (Moe, Kyun, Nyan), and each sequence of three triggers a different technique.
 
-Join the maid Aki in defeating the enemy maids in her way to make her maid cafe the most popular in Akihabara!
+Join the maid Aki in defeating the enemy maids on her way to make her maid cafe the most popular in Akihabara!
 
 ## How to run
 
-A packaged build can be downloaded from the [releases](https://github.com/napronap/meido/releases) section of this repository (Windows only). Alternatively to build it yourself follow the instructions below.
+A packaged build can be downloaded from the [releases](https://github.com/napronap/meido/releases) section of this repository (Windows only). Alternatively, to build it yourself follow the instructions below.
 
 Needs UE 5.6
 
@@ -38,7 +38,7 @@ The project uses the [VRM4U](https://github.com/ruyo/VRM4U) third party plugin (
 
 Defeat the 7 enemy maids that come to attack you. You win after you defeat them all, and then you can restart to try again.
 
-There's three different pose combos you can perform. Input the posesin the correct order to launch special attacks. If you input an incorrect sequence, you will piss off Aki!
+There are three different pose combos you can perform. Input the poses in the correct order to launch special attacks. If you input an incorrect sequence, you will upset Aki!
 
 | Input (M=Moe, K=Kyun, N=Nyan) | Result |
 | --- | --- |

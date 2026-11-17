@@ -2,7 +2,8 @@
 
 
 #include "Animation/AnimNotify_CheckCombo.h"
-#include "ActorComponents/AttackComponent.h"
+
+#include "Interfaces/ComboAttacker.h"
 
 void UAnimNotify_CheckCombo::Notify(
 	USkeletalMeshComponent* MeshComp,
@@ -12,14 +13,12 @@ void UAnimNotify_CheckCombo::Notify(
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 
-	AActor* Owner = MeshComp ? MeshComp->GetOwner() : nullptr;
-	if (!Owner)
-	{
-		return;
-	}
+	AActor* Owner = MeshComp->GetOwner();
 
-	if (UAttackComponent* Attack = Owner->FindComponentByClass<UAttackComponent>())
+	if (!Owner) return;
+
+	if (Owner->Implements<UComboAttacker>())
 	{
-		Attack->NotifyCheckCombo();
+		IComboAttacker::Execute_CheckCombo(Owner);
 	}
 }

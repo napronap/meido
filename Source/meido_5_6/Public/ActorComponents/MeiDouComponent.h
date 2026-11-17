@@ -8,11 +8,6 @@
 #include "Types/MeiDouTypes.h"
 #include "MeiDouComponent.generated.h"
 
-class AMaidCharacter;
-class UMeiDouPoseDataAsset;
-class UAnimMontage;
-class USoundBase;
-
 USTRUCT(BlueprintType)
 struct FMeiDouResolvedCombo
 {
@@ -37,7 +32,8 @@ struct FMeiDouPoseAnimationRequest
 	bool bUseMirroredMontage = false;
 };
 
-// Multicast: multi-listener (UI / audio). Presentation play is cast to owner (CP3.1).
+// APPARENTLY I need to set it as dynamic so that later on I can do stuff on BP
+// I'm not sure if I'll have to, but let's keep it like this for now 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FOnMeiDouComboResolved,
 	const FMeiDouResolvedCombo&, Result
@@ -63,165 +59,90 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	bool, bIsLocked
 );
 
-/** Why the combo buffer changed (CP3.5 UI). */
-UENUM(BlueprintType)
-enum class EMeiDouBufferChangeReason : uint8
-{
-	PoseAdded UMETA(DisplayName = "PoseAdded"),
-	ClearedSuccess UMETA(DisplayName = "ClearedSuccess"),
-	ClearedFail UMETA(DisplayName = "ClearedFail"),
-	ClearedTimeout UMETA(DisplayName = "ClearedTimeout"),
-	ClearedOther UMETA(DisplayName = "ClearedOther"),
-};
+// TODO: maybe end the montage early
+// DECLARE_DELEGATE(
+// 	FOnMeiDouActiveStateEnded
+// );
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
-	FOnMeiDouBufferChanged,
-	const TArray<EMeiDouInput>&, Buffer,
-	EMeiDouBufferChangeReason, Reason
-);
 
-/**
- * MeiDou gimmick orchestrator (CP3.1–3.5).
- *
- * FSM: Idle → Posing → (queue more poses) → Result | Fail → Idle
- * Catalog: Recipes + legacy Combos. Presentation: cast to AMaidCharacter.
- * Preload: soft result classes on BeginPlay.
- * CP3.4: inter-pose timeout only while Idle waiting; mirror full-buffer count.
- * CP3.5: OnMeiDouBufferChanged for HUD queue (bubble is player-only WidgetComponent).
- * CP3.6: pose SFX on UMeiDouPoseDataAsset; success/fail on component; result SFX on result actors.
- */
-UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
+UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class MEIDO_5_6_API UMeiDouComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:
+public:	
+	// Sets default values for this component's properties
 	UMeiDouComponent();
 
+	// register the pose input
 	bool RegisterInput(EMeiDouInput Input);
 
+	// Called by animation notify state to indicate current MeiDou action lifecycle
 	void OnMeiDouActionWindowBegin();
 	void OnMeiDouActionWindowEnd();
+
+	// Called by animation owner if a requested montage could not be played
+	// TODO: remove (all definitions should be correct)
 	void OnRequestedAnimationFailed();
+
+	// Handles generic animation events emitted by MeiDou notifies
 	void HandleAnimEvent(EMeiDouAnimEvent EventKey);
 
+	// Returns the currently resolved combo definition while its result montage is active
 	const FMeiDouComboDefinition* GetActiveComboDefinition() const;
 
 	EMeiDouState GetMeiDouState() const { return MeiDouState; }
 	bool IsMeiDouActive() const { return MeiDouState != EMeiDouState::EMDS_Idle; }
 
+	// reset the combo upon completion, damage, etc
 	void ResetCombo();
 
-	/** Clear buffer and broadcast (default ClearedOther). */
-	void ResetComboAndNotify(EMeiDouBufferChangeReason Reason);
-
-	/**
-	 * CP3.2: Load soft spawn classes from ComboData (Recipes + legacy Combos).
-	 * Safe to call more than once. Default: BeginPlay when bPreloadResultsOnBeginPlay.
-	 * Not owned by GameMode — any map with this component warms results.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "MeiDou|Preload")
-	void PreloadResults();
-
-	UFUNCTION(BlueprintPure, Category = "MeiDou|Preload")
-	bool HasPreloadedResults() const { return bResultsPreloaded; }
-
-	UPROPERTY(BlueprintAssignable, Category = "MeiDou|Events")
+	// Delegate that broadcasts the output of the combo
+	// again, not sure if this will eventually be used in blueprints anyways
+	// TODO: don't need all these on bp confirmed (for now)
+	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouComboResolved OnComboResolved;
 
-	UPROPERTY(BlueprintAssignable, Category = "MeiDou|Events")
+	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouComboFailed OnComboFailed;
 
-	/** Still fired for UI; pose play is also driven via owner cast. */
-	UPROPERTY(BlueprintAssignable, Category = "MeiDou|Events")
+	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouPoseAnimationRequested OnPoseAnimationRequested;
 
-	UPROPERTY(BlueprintAssignable, Category = "MeiDou|Events")
+	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouStateChanged OnMeiDouStateChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "MeiDou|Events")
+	UPROPERTY(BlueprintAssignable)
 	FOnMeiDouControlLockChanged OnMeiDouControlLockChanged;
-
-	/** Buffer snapshot after pose add / clear (success, fail, timeout). HUD queue listens here. */
-	UPROPERTY(BlueprintAssignable, Category = "MeiDou|Events")
-	FOnMeiDouBufferChanged OnMeiDouBufferChanged;
-
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Data")
-	TObjectPtr<UMeiDouComboData> ComboData;
-
-	/**
-	 * Pose montages for this caster (player/boss). Prefer config here over character base.
-	 * If empty, presentation falls back to AMaidCharacter::MeiDouPoseDataMap.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Presentation")
-	TMap<EMeiDouInput, TObjectPtr<UMeiDouPoseDataAsset>> PoseDataMap;
-
-	/**
-	 * Fail / berrinche montage. Prefer here; falls back to character MeiDouFailMontage.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Presentation")
-	TObjectPtr<UAnimMontage> FailMontage;
-
-	/** Cast-layer success (not result boom/beam). Null = silence. */
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Audio")
-	TObjectPtr<USoundBase> SuccessSfx;
-
-	/** Cast-layer fail / berrinche. Null = silence. */
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Audio")
-	TObjectPtr<USoundBase> FailSfx;
-
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Debug")
-	bool bDrawDebugMeiDou = false;
-
-	/** If true, PreloadResults runs in BeginPlay (demo + playground). */
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Preload")
-	bool bPreloadResultsOnBeginPlay = true;
-
+	
+	UPROPERTY(EditDefaultsOnly)
+	UMeiDouComboData* ComboData;
+	
 	const TArray<EMeiDouInput>& GetInputBuffer() const;
-
-	/** How many times Input appears in the current combo buffer (full string). */
+	
+	// Will return the amount of times the input argument is inside the current buffer
 	int32 GetInputCount(EMeiDouInput Input) const;
 
-	/**
-	 * CP3.4 mirror: true for 2nd, 4th… occurrence of Input in the buffer
-	 * (count already in buffer before this press is odd → mirror).
-	 */
-	UFUNCTION(BlueprintPure, Category = "MeiDou")
-	bool ShouldMirrorPose(EMeiDouInput Input) const;
-
-	const UMeiDouPoseDataAsset* FindPoseData(EMeiDouInput Input) const;
-	UAnimMontage* GetFailMontage() const;
-
 protected:
+	// Called when the game starts
 	virtual void BeginPlay() override;
 
 private:
 	UPROPERTY()
 	TArray<EMeiDouInput> ComboInputBuffer;
 
-	/** Player inputs waiting to become poses (max MaxInputs). */
 	UPROPERTY()
 	TArray<EMeiDouInput> QueuedPoseInputs;
-
+	
+	// no plans of making this have more than 3 inputs
 	int32 MaxInputs = 3;
 
-	/**
-	 * CP3.4: seconds to wait for the *next* pose after the previous pose window ends
-	 * (Idle + partial buffer). Not ticked during Posing/Result. 0 = disabled.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Timeout", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	float ComboInputTimeoutSeconds = 2.f;
-
-	/**
-	 * If true (default), never keep an inter-pose timer running while Posing/Result
-	 * (policy: pause while busy). Timer only arms when Idle and waiting for input.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "MeiDou|Timeout")
-	bool bTimeoutOnlyWhileIdleWaiting = true;
 
 	FTimerHandle ComboInputTimeoutHandle;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeiDou", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou", meta=(AllowPrivateAccess="true"))
 	EMeiDouState MeiDouState = EMeiDouState::EMDS_Idle;
 
 	UPROPERTY()
@@ -229,51 +150,35 @@ private:
 	bool bHasActiveComboDefinition = false;
 
 	UPROPERTY()
-	FMeiDouComboDefinition PendingResultDefinition;
-	bool bHasPendingResult = false;
+	FMeiDouComboDefinition PendingResolvedComboDefinition;
+	bool bHasPendingResolvedCombo = false;
 
 	UPROPERTY()
-	FMeiDouResolvedCombo PendingResultPayload;
+	FMeiDouResolvedCombo PendingResolvedComboResult;
 
 	UPROPERTY()
-	FMeiDouResolvedCombo PendingFailPayload;
-	bool bHasPendingFail = false;
+	FMeiDouResolvedCombo PendingFailedComboResult;
+	bool bHasPendingFailedCombo = false;
 
 	TWeakObjectPtr<AActor> SpawnedResultActor;
 	bool bDestroySpawnedResultActorOnActionEnd = false;
 
-	bool bResultsPreloaded = false;
-
 	void SetMeiDouState(EMeiDouState NewState);
+	bool HasActiveComboDefinition() const;
+	bool HasPendingResolvedCombo() const;
+	bool HasPendingFailedCombo() const;
 	void ClearActiveComboDefinition();
-	void ClearPendingResult();
-	void ClearPendingFail();
+	void ClearPendingResolvedCombo();
+	void ClearPendingFailedCombo();
 	void CleanupSpawnedResultActor();
-	/** Arm timer only if Idle, partial buffer, no queued poses / pending result-fail. */
-	void ArmInterPoseTimeoutIfWaiting();
+	void RestartComboInputTimeout();
 	void ClearComboInputTimeout();
 	void OnComboInputTimeout();
-
-	/** Single advance entry: only runs while Idle. Priority: pose queue → result → fail → arm timeout. */
-	void AdvanceFromIdle();
-
-	bool AppendToComboBuffer(EMeiDouInput Input);
-	bool TryResolveBuffer();
-	void QueueSuccess(const FMeiDouComboDefinition& Definition);
-	void QueueFail();
+	void TryConsumeNextQueuedAction();
+	bool RegisterInputToComboBuffer(EMeiDouInput Input);
+	bool TryResolve();
+	void ExecuteResolvedCombo(const FMeiDouComboDefinition& Definition);
 	void ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig);
 	FVector GetSpawnLocationForConfig(const FMeiDouSpawnConfig& SpawnConfig, AActor*& OutTargetActor);
 	AActor* GetCurrentLockOnTarget();
-
-	AMaidCharacter* GetMaidOwner() const;
-	void DebugMessage(const FString& Message, const FColor& Color, float Time = 2.f) const;
-
-	void PresentPose(const FMeiDouPoseAnimationRequest& Request);
-	void PresentResult(const FMeiDouResolvedCombo& Result);
-	void PresentFail(const FMeiDouResolvedCombo& Result);
-
-	void NotifyBufferChanged(EMeiDouBufferChangeReason Reason);
-
-	void PlayMeiDouSfx(USoundBase* Sound) const;
-	void PlayPoseSfx(EMeiDouInput Input, bool bMirrored) const;
 };

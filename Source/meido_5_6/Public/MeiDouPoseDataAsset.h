@@ -7,36 +7,27 @@
 #include "Types/MeiDouTypes.h"
 #include "MeiDouPoseDataAsset.generated.h"
 
-class USoundBase;
-
 /**
- * Per-pose data for one MeiDou input (montage, rate, SFX).
- * New poses = new assets mapped on the caster; no hard-coded Moe/Kyun/Nyan audio table.
+ * A data asset representing each individual pose's data related to animations
+ * this should live in the character since it's the one driving animations
+ * for example, different characters can have different assets for each pose
  */
 UCLASS()
 class MEIDO_5_6_API UMeiDouPoseDataAsset : public UDataAsset
 {
 	GENERATED_BODY()
-
+	
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou|Pose")
-	EMeiDouInput Input = EMeiDouInput::None;
-
-	/**
-	 * If a pose is played twice in the same combo string, mirror via anim flag
-	 * (2nd, 4th… — see UMeiDouComponent::ShouldMirrorPose).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	EMeiDouInput Input;
+	
+	/*
+	 * if a pose is played twice in the same combo string, it should play the mirrored version
+	 * the third time it should play the normal version again
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou|Pose")
-	TObjectPtr<UAnimMontage> Montage;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UAnimMontage* Montage;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou|Pose", meta = (ClampMin = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float PlayRate = 1.5f;
-
-	/** Played when this pose starts (CP3.6). Injected from this asset via FindPoseData. Null = silence. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou|SFX")
-	TObjectPtr<USoundBase> PoseSfx;
-
-	/** Optional SFX when mirrored; if null, uses PoseSfx. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeiDou|SFX")
-	TObjectPtr<USoundBase> MirroredPoseSfx;
 };

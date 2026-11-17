@@ -2,28 +2,26 @@
 
 
 #include "ActorComponents/AttackComponent.h"
-#include "ActorComponents/CharacterStateComponent.h"
-#include "ActorComponents/HealthComponent.h"
-#include "Animation/AnimInstance.h"
-#include "Animation/AnimMontage.h"
-#include "Audio/CombatAudioData.h"
-#include "Characters/MaidCharacter.h"
+#include "Characters/EnemyMaid.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
-#include "Interfaces/CombatTeamSource.h"
 #include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
 #include "Engine/World.h"
-#include "Sound/SoundBase.h"
-#include "Types/StateTypes.h"
-#include "Utils/CombatFeedbackSubsystem.h"
 
+// Sets default values for this component's properties
 UAttackComponent::UAttackComponent()
 {
+	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
+	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = true;
+
+	// ...
 }
 
+
+// Called when the game starts
 void UAttackComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -38,49 +36,29 @@ void UAttackComponent::BeginPlay()
 
 void UAttackComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	CloseHitWindow();
+	for (auto& Pair : ActiveHitStopTimers)
+	{
+		if (AActor* TargetActor = Pair.Key.Get())
+		{
+			RestoreLocalTimeDilation(TargetActor);
+		}
+	}
+
+	ActiveHitStopTimers.Reset();
+
 	Super::EndPlay(EndPlayReason);
 }
 
-AMaidCharacter* UAttackComponent::GetMaidOwner() const
+void UAttackComponent::StartAttack(EHitStopType InHitStopType)
 {
-	return Cast<AMaidCharacter>(GetOwner());
-}
+	if (bIsAttacking) return;
 
-UCharacterStateComponent* UAttackComponent::ResolveStateComponent() const
-{
-	if (const AActor* OwnerActor = GetOwner())
-	{
-		return OwnerActor->FindComponentByClass<UCharacterStateComponent>();
-	}
-
-	return nullptr;
-}
-
-ECombatTeam UAttackComponent::ResolveCombatTeam(const AActor* Actor)
-{
-	if (!Actor || !Actor->GetClass()->ImplementsInterface(UCombatTeamSource::StaticClass()))
-	{
-		return ECombatTeam::Neutral;
-	}
-
-	return ICombatTeamSource::Execute_GetCombatTeam(Actor);
-}
-
-ECombatTeam UAttackComponent::GetOwnerCombatTeam() const
-{
-	return ResolveCombatTeam(GetOwner());
-}
-
-// --- Hit windows ---
-
-void UAttackComponent::StartAttack(const EHitStopType InHitStopType)
-{
+	bIsAttacking = true;
+	HitActorsThisAttack.Reset();
 	CurrentHitStopType = InHitStopType;
-	HitActorsThisWindow.Reset();
 }
 
-void UAttackComponent::OpenHitWindow(const FName InSocket)
+void UAttackComponent::OpenHitWindow(FName InSocket)
 {
 	TArray<FName> Sockets;
 	if (InSocket != NAME_None)
@@ -109,173 +87,23 @@ void UAttackComponent::OpenHitWindowSockets(const TArray<FName>& InSockets)
 		CurrentHitSockets.Add(HitSocketName);
 	}
 
-	HitActorsThisWindow.Reset();
+	// only damage one per hit window
+	HitActorsThisAttack.Reset();
 	bHitWindowOpen = true;
-
-	if (CombatAudio)
-	{
-		PlayCombatSfx(CombatAudio->MeleeSwing);
-	}
 }
 
 void UAttackComponent::CloseHitWindow()
 {
 	bHitWindowOpen = false;
+	bIsAttacking = false;
 }
-
-void UAttackComponent::PlayCombatSfx(USoundBase* Sound) const
-{
-	if (!Sound || !OwnerCharacter)
-	{
-		return;
-	}
-
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	UGameplayStatics::PlaySoundAtLocation(World, Sound, OwnerCharacter->GetActorLocation());
-}
-
-// --- Combo chain ---
-
-bool UAttackComponent::IsInActiveComboAttack() const
-{
-	const UCharacterStateComponent* State = ResolveStateComponent();
-	if (!State || !State->IsAttacking())
-	{
-		return false;
-	}
-
-	return State->GetAttackState() != EAttackState::WhiffRecover;
-}
-
-void UAttackComponent::RequestComboAttack()
-{
-	if (IsInActiveComboAttack())
-	{
-		// One buffered press = permission for next section (not a queue).
-		bComboInputBuffered = true;
-		return;
-	}
-
-	StartComboChain();
-}
-
-void UAttackComponent::StartComboChain()
-{
-	AMaidCharacter* Maid = GetMaidOwner();
-	if (!Maid || !ComboAttackMontage)
-	{
-		if (Maid)
-		{
-			Maid->ApplyGameplayStateIdle();
-		}
-		return;
-	}
-
-	StartAttack(EHitStopType::Light);
-	Maid->ApplyGameplayStateAttacking();
-
-	ComboStepIndex = 0;
-	bComboInputBuffered = false;
-
-	USkeletalMeshComponent* Mesh = Maid->GetMesh();
-	UAnimInstance* AnimInstance = Mesh ? Mesh->GetAnimInstance() : nullptr;
-	if (!AnimInstance)
-	{
-		Maid->ApplyGameplayStateIdle();
-		return;
-	}
-
-	const float MontageLength = AnimInstance->Montage_Play(
-		ComboAttackMontage,
-		1.0f,
-		EMontagePlayReturnType::MontageLength,
-		0.0f,
-		true
-	);
-
-	if (MontageLength > 0.0f)
-	{
-		AnimInstance->Montage_SetEndDelegate(Maid->OnAttackMontageEnded, ComboAttackMontage);
-	}
-	else
-	{
-		Maid->ApplyGameplayStateIdle();
-	}
-}
-
-void UAttackComponent::NotifyCheckCombo()
-{
-	if (!IsInActiveComboAttack())
-	{
-		return;
-	}
-
-	AMaidCharacter* Maid = GetMaidOwner();
-	if (!Maid)
-	{
-		return;
-	}
-
-	if (!bComboInputBuffered)
-	{
-		Maid->ApplyGameplayStateWhiffRecover();
-		return;
-	}
-
-	bComboInputBuffered = false;
-	++ComboStepIndex;
-
-	if (ComboStepIndex < ComboSectionNames.Num())
-	{
-		if (UAnimInstance* AnimInstance = Maid->GetMesh() ? Maid->GetMesh()->GetAnimInstance() : nullptr)
-		{
-			AnimInstance->Montage_JumpToSection(ComboSectionNames[ComboStepIndex], ComboAttackMontage);
-		}
-	}
-}
-
-void UAttackComponent::NotifyRecoveryEnd()
-{
-	AMaidCharacter* Maid = GetMaidOwner();
-	if (!Maid || !ComboAttackMontage)
-	{
-		return;
-	}
-
-	if (UAnimInstance* AnimInstance = Maid->GetMesh() ? Maid->GetMesh()->GetAnimInstance() : nullptr)
-	{
-		AnimInstance->Montage_Stop(RecoveryBlendOutTime, ComboAttackMontage);
-	}
-}
-
-void UAttackComponent::ResetComboRuntime()
-{
-	ComboStepIndex = 0;
-	bComboInputBuffered = false;
-}
-
-// --- Trace / damage ---
 
 void UAttackComponent::PerformHitTrace()
 {
-	if (!OwnerCharacter)
-	{
-		return;
-	}
+	if (!OwnerCharacter) return;
 
 	USkeletalMeshComponent* OwnerMesh = OwnerCharacter->GetMesh();
 	if (!OwnerMesh || CurrentHitSockets.Num() <= 0)
-	{
-		return;
-	}
-
-	UWorld* World = GetWorld();
-	if (!World)
 	{
 		return;
 	}
@@ -295,7 +123,7 @@ void UAttackComponent::PerformHitTrace()
 		const FVector End = Start + OwnerCharacter->GetActorForwardVector() * TraceDistance;
 
 		FHitResult Hit;
-		const bool bHit = World->SweepSingleByChannel(
+		const bool bHit = GetWorld()->SweepSingleByChannel(
 			Hit,
 			Start,
 			End,
@@ -305,19 +133,16 @@ void UAttackComponent::PerformHitTrace()
 			QueryParams
 		);
 
-		if (bDrawDebugHitTrace)
-		{
-			DrawDebugBox(
-				World,
-				(Start + End) * 0.5f,
-				BoxExtent,
-				bHit ? FColor::Green : FColor::Red,
-				false,
-				0.1f
-			);
-		}
+		DrawDebugBox(
+			GetWorld(),
+			(Start + End) * .5f,
+			BoxExtent,
+			FColor::Red,
+			false,
+			.1f
+		);
 
-		if (!bHit || !Hit.GetActor() || HitActorsThisWindow.Contains(Hit.GetActor()))
+		if (!bHit || !Hit.GetActor() || HitActorsThisAttack.Contains(Hit.GetActor()))
 		{
 			continue;
 		}
@@ -328,9 +153,17 @@ void UAttackComponent::PerformHitTrace()
 			continue;
 		}
 
-		ApplyDamageToHit(HitActor);
-		ApplyHitStopForHit(HitActor);
-		HitActorsThisWindow.Add(HitActor);
+		UGameplayStatics::ApplyDamage(
+			HitActor,
+			Damage,
+			OwnerCharacter->GetController(),
+			OwnerCharacter,
+			nullptr
+		);
+
+		ApplyLocalHitStop(OwnerCharacter, CurrentHitStopType);
+		ApplyLocalHitStop(HitActor, CurrentHitStopType);
+		HitActorsThisAttack.Add(HitActor);
 	}
 }
 
@@ -341,32 +174,68 @@ bool UAttackComponent::ShouldIgnoreHitActor(const AActor* HitActor) const
 		return true;
 	}
 
-	if (HitActor == OwnerCharacter)
-	{
-		return true;
-	}
-
-	if (const UHealthComponent* TargetHealth = HitActor->FindComponentByClass<UHealthComponent>())
-	{
-		if (TargetHealth->IsDead())
-		{
-			return true;
-		}
-	}
-
 	if (bAllowFriendlyFire)
 	{
 		return false;
 	}
 
-	const ECombatTeam OwnerTeam = ResolveCombatTeam(OwnerCharacter);
-	if (OwnerTeam == ECombatTeam::Neutral)
+	const bool bOwnerIsEnemyMaid = OwnerCharacter->IsA(AEnemyMaid::StaticClass());
+	const bool bTargetIsEnemyMaid = HitActor->IsA(AEnemyMaid::StaticClass());
+
+	if (bOwnerIsEnemyMaid && bTargetIsEnemyMaid)
 	{
-		return false;
+		return true;
 	}
 
-	const ECombatTeam TargetTeam = ResolveCombatTeam(HitActor);
-	return TargetTeam == OwnerTeam;
+	return false;
+}
+
+void UAttackComponent::ApplyLocalHitStop(AActor* TargetActor, const EHitStopType HitStopType)
+{
+	if (!TargetActor || !GetWorld())
+	{
+		return;
+	}
+
+	const float Duration = GetHitStopDuration(HitStopType);
+	if (Duration <= 0.f)
+	{
+		return;
+	}
+
+	TargetActor->CustomTimeDilation = FMath::Clamp(HitStopTimeDilation, 0.001f, 1.0f);
+
+	FTimerHandle& TimerHandle = ActiveHitStopTimers.FindOrAdd(TargetActor);
+	GetWorld()->GetTimerManager().ClearTimer(TimerHandle);
+
+	const TWeakObjectPtr<AActor> WeakActor = TargetActor;
+	FTimerDelegate RestoreDelegate;
+	RestoreDelegate.BindLambda([this, WeakActor]()
+	{
+		if (!IsValid(this))
+		{
+			return;
+		}
+
+		if (AActor* ActorToRestore = WeakActor.Get())
+		{
+			RestoreLocalTimeDilation(ActorToRestore);
+		}
+
+		ActiveHitStopTimers.Remove(WeakActor);
+	});
+
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle, RestoreDelegate, Duration, false);
+}
+
+void UAttackComponent::RestoreLocalTimeDilation(AActor* TargetActor)
+{
+	if (!TargetActor)
+	{
+		return;
+	}
+
+	TargetActor->CustomTimeDilation = 1.0f;
 }
 
 float UAttackComponent::GetHitStopDuration(const EHitStopType HitStopType) const
@@ -381,52 +250,8 @@ float UAttackComponent::GetHitStopDuration(const EHitStopType HitStopType) const
 	}
 }
 
-void UAttackComponent::ApplyHitStopForHit(AActor* HitActor)
-{
-	UWorld* World = GetWorld();
-	if (!World || !OwnerCharacter || !HitActor)
-	{
-		return;
-	}
 
-	const float Duration = GetHitStopDuration(CurrentHitStopType);
-	if (Duration <= 0.f)
-	{
-		return;
-	}
-
-	if (UCombatFeedbackSubsystem* Feedback = World->GetSubsystem<UCombatFeedbackSubsystem>())
-	{
-		Feedback->ApplyHitStopPair(
-			OwnerCharacter,
-			HitActor,
-			Duration,
-			HitStopTimeDilation
-		);
-	}
-}
-
-void UAttackComponent::ApplyDamageToHit(AActor* HitActor)
-{
-	if (!OwnerCharacter || !HitActor)
-	{
-		return;
-	}
-
-	UGameplayStatics::ApplyDamage(
-		HitActor,
-		Damage,
-		OwnerCharacter->GetController(),
-		OwnerCharacter,
-		nullptr
-	);
-
-	if (CombatAudio)
-	{
-		PlayCombatSfx(CombatAudio->MeleeHitConfirm);
-	}
-}
-
+// Called every frame
 void UAttackComponent::TickComponent(
 	float DeltaTime,
 	ELevelTick TickType,

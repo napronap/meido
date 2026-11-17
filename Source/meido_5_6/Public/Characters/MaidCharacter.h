@@ -3,14 +3,13 @@
 #include "CoreMinimal.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "MeiDouPoseDataAsset.h"
-#include "Animation/AnimInstance.h"
 #include "GameFramework/Character.h"
+#include "Types/CharacterTypes.h"
+#include "Interfaces/ComboAttacker.h"
 #include "Types/MeiDouTypes.h"
 #include "MaidCharacter.generated.h"
 
 class UAttackComponent;
-class UCameraShakeBase;
-class UCharacterStateComponent;
 class UDashComponent;
 class UHealthComponent;
 class ULockOnComponent;
@@ -18,7 +17,7 @@ class UAnimMontage;
 class AController;
 
 UCLASS(Abstract)
-class MEIDO_5_6_API AMaidCharacter : public ACharacter
+class MEIDO_5_6_API AMaidCharacter : public ACharacter, public IComboAttacker
 {
 	GENERATED_BODY()
 
@@ -40,49 +39,8 @@ public:
 	void DoStartComboAttack();
 	bool DoDash(const FVector2D& MoveInput = FVector2D::ZeroVector, bool bLockOnActive = false);
 
-	/** Used by UAttackComponent combo chain to bind montage end. */
-	FOnMontageEnded OnAttackMontageEnded;
-
-	/*
-	 * State — Apply* helpers write CharacterStateComponent slices.
-	 */
-	void ApplyGameplayStateIdle();
-	void ApplyGameplayStateAttacking();
-	void ApplyGameplayStateWhiffRecover();
-	void ApplyGameplayStateStagger();
-	void ApplyGameplayStateJumping();
-	void ApplyGameplayStateDashing();
-	void ApplyGameplayStateMeiDouActive();
-	void ApplyGameplayStateMeiDouFailed();
-	void ApplyGameplayStateDead();
-
-	/*
-	 * MeiDou presentation — public so UMeiDouComponent can cast-call (CP3.1).
-	 */
-	void RegisterMeiDouInput(EMeiDouInput Input);
-	void PlayMeiDouPose(const FMeiDouPoseAnimationRequest& Request);
-	void PlayMeiDouResult(const FMeiDouResolvedCombo& Result);
-	void PlayMeiDouFail(const FMeiDouResolvedCombo& Result);
-
-	/**
-	 * Fallback pose assets if UMeiDouComponent::PoseDataMap is empty (legacy BP).
-	 * Prefer configuring poses on the MeiDou component.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MeiDou|Legacy")
-	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
-
-	/** Fallback if component FailMontage is unset. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MeiDou|Legacy")
-	UAnimMontage* MeiDouFailMontage = nullptr;
-
 protected:
 	virtual void BeginPlay() override;
-
-	/**
-	 * Spring-arm camera probe uses ECC_Camera. Ensure this maid does not block that channel
-	 * (capsule + mesh). BP presets alone are easy to mis-set on the wrong component.
-	 */
-	void ApplyCameraProbeIgnorePolicy();
 
 	/*
 	 *	movement (maybe put camera in player maid class because AI maid won't use it
@@ -91,8 +49,24 @@ protected:
 	virtual void Jump() override;
 	virtual void StopJumping() override;
 
+	/*
+	 * State
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State")
-	UCharacterStateComponent* CharacterStateComponent;
+	ECharacterState CharacterState = ECharacterState::ECS_Idle;
+
+	/*
+	 * Combat
+	 */
+	UPROPERTY(EditAnywhere, Category="Combat|Combo")
+	UAnimMontage* ComboAttackMontage;
+
+	UPROPERTY(EditAnywhere, Category="Combat|Combo")
+	TArray<FName> ComboSectionNames;
+
+	int32 ComboIndex = 0;
+	int32 ComboCount = 0;
+	float CachedAttackInputTime = 0.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	UAttackComponent* AttackComponent;
@@ -103,6 +77,12 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
 	UHealthComponent* HealthComponent;
 
+	void DoContinueCombo();
+
+	virtual void CheckCombo_Implementation() override;
+	virtual void RecoveryEnd_Implementation() override;
+
+	FOnMontageEnded OnAttackMontageEnded;
 	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	FOnMontageEnded OnDamageMontageEnded;
@@ -116,12 +96,29 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
 	UMeiDouComponent* MeiDouComponent;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MeiDou")
+	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
+
+	void RegisterMeiDouInput(EMeiDouInput Input);
+
+	UFUNCTION()
+	void HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimationRequest& Request);
+
+	UFUNCTION()
+	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
+
+	UFUNCTION()
+	void HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result);
 
 	UFUNCTION()
 	void HandleMeiDouControlLockChanged(bool bIsLocked);
 
-	UPROPERTY(EditDefaultsOnly, Category="MeiDou|Legacy")
+	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MeiDou")
+	UAnimMontage* MeiDouFailMontage = nullptr;
 
 	/*
 	 * damage
@@ -135,27 +132,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
 	float PostDamageIFrameDuration = 0.35f;
 
-	/**
-	 * Post-hit i-frames only for player-controlled pawns when true (current feel).
-	 * Enemies stay open to multi-hit. Tune / revisit with dash-as-primary invuln later.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames")
-	bool bPostDamageIFramesPlayerOnly = true;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
 	float DashIFrameDuration = 0.10f;
-
-	/** Camera shake when this pawn takes damage (local player). Null = no shake until author assigns. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Feedback|Shake")
-	TSubclassOf<UCameraShakeBase> DamageReceivedCameraShake;
-
-	/** Stronger shake on death (optional; falls back to DamageReceivedCameraShake). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Feedback|Shake")
-	TSubclassOf<UCameraShakeBase> DeathCameraShake;
-
-	/** Apply short hit-stop on self when receiving damage (stacks with attacker pair feel). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Feedback")
-	bool bHitStopOnDamageReceived = true;
 
 	UFUNCTION()
 	void HandleDamageTaken(
@@ -182,11 +160,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Death", meta=(ClampMin="0.0", UIMin="0.0"))
 	float DeathLifeSpanSeconds = 6.f;
 
-	/** Presentation/flow mirror of Health dead. Prefer IsDead() / HealthComponent->IsDead() for queries. */
 	bool bHasDied = false;
 	float InvulnerableUntilTime = 0.f;
-	/** While true, HasActiveIFrames ignores timer (dash notify window). */
-	bool bIFrameOverrideActive = false;
 
 	/*
 	 * lock on
@@ -196,21 +171,13 @@ protected:
 
 public:
 	bool CanStartDash() const;
-	/** @param bGrantLegacyTimedIFrames player timed i-frames if dash anim has no I-Frame notify yet */
-	void NotifyDashStarted(bool bGrantLegacyTimedIFrames = true);
+	void NotifyDashStarted();
 	void NotifyDashEnded();
+	ECharacterState GetCharacterState() const;
 	bool IsDead() const;
 	virtual void ResetForFlowRestart();
 
-	UFUNCTION(BlueprintPure, Category = "State")
-	UCharacterStateComponent* GetCharacterStateComponent() const { return CharacterStateComponent; }
-
-	UFUNCTION(BlueprintPure, Category = "Health")
-	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
-
-	/** AnimNotifyState_DashIFrames — invuln while notify range is active. */
-	void SetIFrameOverrideActive(bool bActive);
-
+protected:
 	void GrantIFrames(float DurationSeconds);
 	bool HasActiveIFrames() const;
 };

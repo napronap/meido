@@ -2,7 +2,9 @@
 
 
 #include "Animation/AnimNotify_RecoveryEnd.h"
-#include "ActorComponents/AttackComponent.h"
+
+
+#include "Interfaces/ComboAttacker.h"
 
 void UAnimNotify_RecoveryEnd::Notify(
 	USkeletalMeshComponent* MeshComp,
@@ -12,14 +14,12 @@ void UAnimNotify_RecoveryEnd::Notify(
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 
-	AActor* Owner = MeshComp ? MeshComp->GetOwner() : nullptr;
-	if (!Owner)
-	{
-		return;
-	}
+	AActor* Owner = MeshComp->GetOwner();
 
-	if (UAttackComponent* Attack = Owner->FindComponentByClass<UAttackComponent>())
+	if (!Owner) return;
+
+	if (Owner->Implements<UComboAttacker>())
 	{
-		Attack->NotifyRecoveryEnd();
+		IComboAttacker::Execute_RecoveryEnd(Owner);
 	}
 }

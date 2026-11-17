@@ -4,25 +4,15 @@
 #include "Characters/MaidCharacter.h"
 #include "Components/InputComponent.h"
 #include "ActorComponents/AttackComponent.h"
-#include "ActorComponents/CharacterStateComponent.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/HealthComponent.h"
 #include "ActorComponents/LockOnComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
 #include "Animation/AnimInstance.h"
-#include "Camera/CameraShakeBase.h"
-#include "Components/CapsuleComponent.h"
-#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "GameFramework/PlayerController.h"
 #include "Animation/AnimMontage.h"
-#include "Engine/EngineTypes.h"
 #include "IA/EnemyMaidAIController.h"
-#include "Audio/CombatAudioData.h"
-#include "Kismet/GameplayStatics.h"
-#include "Sound/SoundBase.h"
-#include "Utils/CombatFeedbackSubsystem.h"
 
 namespace
 {
@@ -58,15 +48,6 @@ AMaidCharacter::AMaidCharacter()
 	OnAttackMontageEnded.BindUObject(this, &AMaidCharacter::AttackMontageEnded);
 	OnDamageMontageEnded.BindUObject(this, &AMaidCharacter::DamageMontageEnded);
 	OnMeiDouFailMontageEnded.BindUObject(this, &AMaidCharacter::MeiDouFailMontageEnded);
-
-	CharacterStateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("CharacterStateComponent"));
-	// Native so combo montage/sections always show on the inherited component (not only BP-added Attack).
-	AttackComponent = CreateDefaultSubobject<UAttackComponent>(TEXT("AttackComponent"));
-	DashComponent = CreateDefaultSubobject<UDashComponent>(TEXT("DashComponent"));
-	// CP2.3: LockOn native CDO (marker + TargetObjectType defaults live here; delete BP-added duplicate if any).
-	LockOnComponent = CreateDefaultSubobject<ULockOnComponent>(TEXT("LockOnComponent"));
-	// CP2.4: Health native CDO (float bars bind via USimpleHealthBarComponent on enemies).
-	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 }
 
 // Called when the game starts or when spawned
@@ -74,33 +55,11 @@ void AMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ApplyCameraProbeIgnorePolicy();
-
-	if (!CharacterStateComponent)
-	{
-		CharacterStateComponent = FindComponentByClass<UCharacterStateComponent>();
-	}
-
-	if (!AttackComponent)
-	{
-		AttackComponent = FindComponentByClass<UAttackComponent>();
-	}
-
-	if (!DashComponent)
-	{
-		DashComponent = FindComponentByClass<UDashComponent>();
-	}
-
-	if (!HealthComponent)
-	{
-		HealthComponent = FindComponentByClass<UHealthComponent>();
-	}
+	AttackComponent = FindComponentByClass<UAttackComponent>();
+	DashComponent = FindComponentByClass<UDashComponent>();
+	HealthComponent = FindComponentByClass<UHealthComponent>();
 	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
-
-	if (!LockOnComponent)
-	{
-		LockOnComponent = FindComponentByClass<ULockOnComponent>();
-	}
+	LockOnComponent = FindComponentByClass<ULockOnComponent>();
 
 	if (HealthComponent)
 	{
@@ -108,10 +67,23 @@ void AMaidCharacter::BeginPlay()
 		HealthComponent->OnHealthDepleted.AddDynamic(this, &AMaidCharacter::HandleHealthDepleted);
 	}
 
-	// CP3.1: pose/result/fail presentation is cast-driven from MeiDouComponent.
-	// Control lock still uses multicast (State + move stop).
 	if (MeiDouComponent)
 	{
+		MeiDouComponent->OnPoseAnimationRequested.AddDynamic(
+			this,
+			&AMaidCharacter::HandleMeiDouPoseAnimationRequested
+		);
+
+		MeiDouComponent->OnComboResolved.AddDynamic(
+			this,
+			&AMaidCharacter::HandleMeiDouComboResolved
+		);
+
+		MeiDouComponent->OnComboFailed.AddDynamic(
+			this,
+			&AMaidCharacter::HandleMeiDouComboFailed
+		);
+
 		MeiDouComponent->OnMeiDouControlLockChanged.AddDynamic(
 			this,
 			&AMaidCharacter::HandleMeiDouControlLockChanged
@@ -125,131 +97,6 @@ void AMaidCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
-void AMaidCharacter::ApplyCameraProbeIgnorePolicy()
-{
-	// SpringArm only ignores its Owner actor for the query owner; other maids still hit if they Block Camera.
-	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-	{
-		Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	}
-
-	if (USkeletalMeshComponent* SkelMesh = GetMesh())
-	{
-		SkelMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	}
-}
-
-void AMaidCharacter::ApplyGameplayStateIdle()
-{
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::None);
-	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Idle);
-	if (CharacterStateComponent->GetHealthState() == EHealthActionState::Stagger)
-	{
-		CharacterStateComponent->SetHealthState(EHealthActionState::Alive);
-	}
-	if (CharacterStateComponent->GetLocomotionState() == ELocomotionState::Jump
-		|| CharacterStateComponent->GetLocomotionState() == ELocomotionState::Dash)
-	{
-		CharacterStateComponent->SetLocomotionState(ELocomotionState::Grounded);
-	}
-}
-
-void AMaidCharacter::ApplyGameplayStateAttacking()
-{
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::InSwing);
-}
-
-void AMaidCharacter::ApplyGameplayStateWhiffRecover()
-{
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::WhiffRecover);
-}
-
-void AMaidCharacter::ApplyGameplayStateStagger()
-{
-	bDamageReactionActive = true;
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::None);
-	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Idle);
-	CharacterStateComponent->SetLocomotionState(ELocomotionState::Grounded);
-	CharacterStateComponent->SetHealthState(EHealthActionState::Stagger);
-}
-
-void AMaidCharacter::ApplyGameplayStateJumping()
-{
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetLocomotionState(ELocomotionState::Jump);
-}
-
-void AMaidCharacter::ApplyGameplayStateDashing()
-{
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::None);
-	CharacterStateComponent->SetLocomotionState(ELocomotionState::Dash);
-}
-
-void AMaidCharacter::ApplyGameplayStateMeiDouActive()
-{
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::None);
-	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Active);
-}
-
-void AMaidCharacter::ApplyGameplayStateMeiDouFailed()
-{
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::None);
-	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Failed);
-}
-
-void AMaidCharacter::ApplyGameplayStateDead()
-{
-	bDamageReactionActive = false;
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	CharacterStateComponent->SetAttackState(EAttackState::None);
-	CharacterStateComponent->SetMeiDouLayerState(EMeiDouLayerState::Idle);
-	CharacterStateComponent->SetLocomotionState(ELocomotionState::Grounded);
-	CharacterStateComponent->SetHealthState(EHealthActionState::Dead);
-}
-
 float AMaidCharacter::TakeDamage(
 	float DamageAmount,
 	FDamageEvent const& DamageEvent,
@@ -257,15 +104,12 @@ float AMaidCharacter::TakeDamage(
 	AActor* DamageCauser
 )
 {
-	// Reception gates (pawn policies). HP mutation is UHealthComponent::ApplyCombatDamage
-	// via Super → OnTakeAnyDamage (CP1.2).
-	if (IsDead() || DamageAmount <= 0.f)
+	if (bHasDied || DamageAmount <= 0.f)
 	{
 		return 0.f;
 	}
 
-	if (CharacterStateComponent
-		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
 		return 0.f;
 	}
@@ -280,8 +124,9 @@ float AMaidCharacter::TakeDamage(
 
 void AMaidCharacter::DoMove(float Right, float Forward)
 {
-	if (CharacterStateComponent
-		&& (CharacterStateComponent->IsMeiDouLocked() || CharacterStateComponent->IsDashing()))
+	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
+		CharacterState == ECharacterState::ECS_Dashing ||
+		CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
 		return;
 	}
@@ -310,30 +155,24 @@ void AMaidCharacter::DoMove(float Right, float Forward)
 
 void AMaidCharacter::Jump()
 {
-	if (!CharacterStateComponent)
-	{
-		return;
-	}
-
-	if (CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
 		return;
 	}
 
 	// only jump in idle, so we don't have weird behavior of jumping while character is playing the attack montage
-	if (CharacterStateComponent->GetOverall() == ECharacterOverallState::Idle)
+	if (CharacterState == ECharacterState::ECS_Idle)
 	{
-		ApplyGameplayStateJumping();
+		CharacterState = ECharacterState::ECS_Jumping;
 		Super::Jump();
 	}
 }
 
 void AMaidCharacter::StopJumping()
 {
-	if (CharacterStateComponent
-		&& CharacterStateComponent->GetLocomotionState() == ELocomotionState::Jump)
+	if (CharacterState == ECharacterState::ECS_Jumping)
 	{
-		ApplyGameplayStateIdle();
+		CharacterState = ECharacterState::ECS_Idle;
 	}
 
 	Super::StopJumping();
@@ -352,8 +191,7 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 		return false;
 	}
 
-	if (CharacterStateComponent
-		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
 		return false;
 	}
@@ -367,17 +205,11 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 
 void AMaidCharacter::DoStartComboAttack()
 {
-	if (!CharacterStateComponent || !AttackComponent)
-	{
-		return;
-	}
-
-	// Gates on character; chain + hit windows on AttackComponent.
-	if (CharacterStateComponent->IsMeiDouLocked()
-		|| CharacterStateComponent->IsDashing()
-		|| CharacterStateComponent->IsStaggered()
-		|| CharacterStateComponent->GetAttackState() == EAttackState::WhiffRecover
-		|| bDamageReactionActive)
+	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
+		CharacterState == ECharacterState::ECS_Recovering ||
+		CharacterState == ECharacterState::ECS_Dashing ||
+		CharacterState == ECharacterState::ECS_MeiDouFailed ||
+		bDamageReactionActive)
 	{
 		return;
 	}
@@ -393,12 +225,87 @@ void AMaidCharacter::DoStartComboAttack()
 		}
 	}
 
-	if (GetCharacterMovement()->IsFalling())
+	// only attack if we are not in the air, at least for now
+	if (!GetCharacterMovement()->IsFalling())
 	{
+		// if we are currently attacking, register this attack
+		if (CharacterState == ECharacterState::ECS_Attacking)
+		{
+			CachedAttackInputTime = GetWorld()->GetTimeSeconds();
+
+			return;
+		}
+
+		DoContinueCombo();
+	}
+}
+
+void AMaidCharacter::DoContinueCombo()
+{
+	if (!AttackComponent || !ComboAttackMontage)
+	{
+		CharacterState = ECharacterState::ECS_Idle;
 		return;
 	}
 
-	AttackComponent->RequestComboAttack();
+	AttackComponent->StartAttack();
+	CharacterState = ECharacterState::ECS_Attacking;
+
+	ComboCount = 0;
+
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		const float MontageLength = AnimInstance->Montage_Play(
+			ComboAttackMontage, 1.0f, EMontagePlayReturnType::MontageLength, 0.0f, true
+		);
+
+		if (MontageLength > 0.0f)
+		{
+			AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ComboAttackMontage);
+		}
+		else
+		{
+			CharacterState = ECharacterState::ECS_Idle;
+		}
+	}
+	else
+	{
+		CharacterState = ECharacterState::ECS_Idle;
+	}
+}
+
+void AMaidCharacter::CheckCombo_Implementation()
+{
+	if (CharacterState == ECharacterState::ECS_Attacking)
+	{
+		// if there were no inputs since our last input, don't continue the combo and enter recovery mode
+		if (CachedAttackInputTime <= 0.f)
+		{
+			CharacterState = ECharacterState::ECS_Recovering;
+			return;
+		}
+
+		// reset the count so the player needs to make another input to continue the chain
+		CachedAttackInputTime = 0.f;
+
+		++ComboCount;
+
+		if (ComboCount < ComboSectionNames.Num())
+		{
+			if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+			{
+				AnimInstance->Montage_JumpToSection(ComboSectionNames[ComboCount], ComboAttackMontage);
+			}
+		}
+	}
+}
+
+void AMaidCharacter::RecoveryEnd_Implementation()
+{
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(.3f, ComboAttackMontage);
+	}
 }
 
 void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -408,13 +315,10 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 		return;
 	}
 
-	if (AttackComponent)
-	{
-		AttackComponent->ResetComboRuntime();
-	}
+	ComboCount = 0;
+	CachedAttackInputTime = 0.f;
 
-	if (CharacterStateComponent
-		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active)
+	if (CharacterState == ECharacterState::ECS_MeiDouActive)
 	{
 		return;
 	}
@@ -423,18 +327,18 @@ void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	{
 		if (DamageMontage && AnimInstance->Montage_IsPlaying(DamageMontage))
 		{
-			ApplyGameplayStateStagger();
+			CharacterState = ECharacterState::ECS_Recovering;
 			return;
 		}
 	}
 
 	if (bDamageReactionActive)
 	{
-		ApplyGameplayStateStagger();
+		CharacterState = ECharacterState::ECS_Recovering;
 		return;
 	}
 
-	ApplyGameplayStateIdle();
+	CharacterState = ECharacterState::ECS_Idle;
 }
 
 void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -451,11 +355,9 @@ void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted
 		return;
 	}
 
-	const bool bMeiDouActive = CharacterStateComponent
-		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active;
-	if (!bMeiDouActive)
+	if (CharacterState != ECharacterState::ECS_MeiDouActive)
 	{
-		ApplyGameplayStateIdle();
+		CharacterState = ECharacterState::ECS_Idle;
 	}
 }
 
@@ -466,10 +368,9 @@ void AMaidCharacter::MeiDouFailMontageEnded(UAnimMontage* Montage, bool bInterru
 		return;
 	}
 
-	if (CharacterStateComponent
-		&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Failed)
+	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
 	{
-		ApplyGameplayStateIdle();
+		CharacterState = ECharacterState::ECS_Idle;
 	}
 }
 
@@ -481,38 +382,6 @@ void AMaidCharacter::HandleDamageTaken(
 	AController* InstigatedBy
 )
 {
-	(void)InHealthComponent;
-	(void)CurrentHealth;
-	(void)DamageCauser;
-	(void)InstigatedBy;
-
-	// Presentation first (shake / hit-stop / hurt SFX) — including MeiDou chip (super armor = no stagger anim only).
-	if (UWorld* World = GetWorld())
-	{
-		if (UCombatFeedbackSubsystem* Feedback = World->GetSubsystem<UCombatFeedbackSubsystem>())
-		{
-			Feedback->NotifyDamageReceived(
-				this,
-				Damage,
-				DamageReceivedCameraShake,
-				Feedback->DamageReceivedHitStopDuration,
-				Feedback->DamageReceivedHitStopTimeDilation,
-				bHitStopOnDamageReceived
-			);
-		}
-
-		if (AttackComponent)
-		{
-			if (const UCombatAudioData* Audio = AttackComponent->GetCombatAudio())
-			{
-				if (Audio->Hurt)
-				{
-					UGameplayStatics::PlaySoundAtLocation(World, Audio->Hurt, GetActorLocation());
-				}
-			}
-		}
-	}
-
 	// MeiDou (pose/result) has super armor: take damage but do not interrupt action montages
 	// should probably introduce a poise mechanic in the future...
 	if (MeiDouComponent && MeiDouComponent->GetMeiDouState() != EMeiDouState::EMDS_Idle)
@@ -522,7 +391,7 @@ void AMaidCharacter::HandleDamageTaken(
 
 	if (!DamageMontage)
 	{
-		if (!bPostDamageIFramesPlayerOnly || IsPlayerControlled())
+		if (IsPlayerControlled())
 		{
 			GrantIFrames(PostDamageIFrameDuration);
 		}
@@ -542,17 +411,17 @@ void AMaidCharacter::HandleDamageTaken(
 	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
 	if (!AnimInstance)
 	{
-		ApplyGameplayStateIdle();
+		CharacterState = ECharacterState::ECS_Idle;
 		return;
 	}
 
 	// Damage reactions should interrupt any ongoing action montage.
 	AnimInstance->Montage_Stop(0.05f);
 
-	// Health slice Stagger (distinct from attack WhiffRecover).
-	ApplyGameplayStateStagger();
+	CharacterState = ECharacterState::ECS_Recovering;
+	bDamageReactionActive = true;
 
-	if (!bPostDamageIFramesPlayerOnly || IsPlayerControlled())
+	if (IsPlayerControlled())
 	{
 		GrantIFrames(PostDamageIFrameDuration);
 	}
@@ -582,43 +451,16 @@ void AMaidCharacter::HandleDamageTaken(
 	}
 
 	bDamageReactionActive = false;
-	ApplyGameplayStateIdle();
+	CharacterState = ECharacterState::ECS_Idle;
 }
 
 void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser)
 {
-	(void)InHealthComponent;
-	(void)DamageCauser;
-
 	if (bHasDied)
 	{
 		return;
 	}
 	bHasDied = true;
-
-	if (UWorld* World = GetWorld())
-	{
-		if (UCombatFeedbackSubsystem* Feedback = World->GetSubsystem<UCombatFeedbackSubsystem>())
-		{
-			const TSubclassOf<UCameraShakeBase> ShakeClass =
-				DeathCameraShake ? DeathCameraShake : DamageReceivedCameraShake;
-			if (APlayerController* PC = Cast<APlayerController>(GetController()))
-			{
-				Feedback->PlayCombatShake(PC, ShakeClass, 1.25f);
-			}
-		}
-
-		if (AttackComponent)
-		{
-			if (const UCombatAudioData* Audio = AttackComponent->GetCombatAudio())
-			{
-				if (Audio->Death)
-				{
-					UGameplayStatics::PlaySoundAtLocation(World, Audio->Death, GetActorLocation());
-				}
-			}
-		}
-	}
 
 	if (AttackComponent)
 	{
@@ -637,7 +479,8 @@ void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, A
 		EnemyAIController->SetAIEnabled(false);
 	}
 
-	ApplyGameplayStateDead();
+	CharacterState = ECharacterState::ECS_Recovering;
+	bDamageReactionActive = false;
 
 	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
 	{
@@ -667,11 +510,9 @@ void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 		return;
 	}
 
-	const bool bMeiDouGateOk = CharacterStateComponent
-		&& (CharacterStateComponent->GetOverall() == ECharacterOverallState::Idle
-			|| CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active);
-
-	if (!bMeiDouGateOk || GetCharacterMovement()->IsFalling())
+	if ((CharacterState != ECharacterState::ECS_Idle &&
+		CharacterState != ECharacterState::ECS_MeiDouActive) ||
+		GetCharacterMovement()->IsFalling())
 	{
 		return;
 	}
@@ -679,14 +520,14 @@ void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 	MeiDouComponent->RegisterInput(Input);
 }
 
-void AMaidCharacter::PlayMeiDouPose(const FMeiDouPoseAnimationRequest& Request)
+void AMaidCharacter::HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimationRequest& Request)
 {
 	if (!MeiDouComponent)
 	{
 		return;
 	}
 
-	const UMeiDouPoseDataAsset* Pose = MeiDouComponent->FindPoseData(Request.Input);
+	const UMeiDouPoseDataAsset* Pose = MeiDouPoseDataMap.FindRef(Request.Input);
 	if (!Pose)
 	{
 		MeiDouComponent->OnRequestedAnimationFailed();
@@ -709,7 +550,7 @@ void AMaidCharacter::PlayMeiDouPose(const FMeiDouPoseAnimationRequest& Request)
 	}
 }
 
-void AMaidCharacter::PlayMeiDouResult(const FMeiDouResolvedCombo& /*Result*/)
+void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result)
 {
 	if (!MeiDouComponent)
 	{
@@ -718,28 +559,70 @@ void AMaidCharacter::PlayMeiDouResult(const FMeiDouResolvedCombo& /*Result*/)
 
 	SetMeiDouMirrorFlag(GetMesh(), false);
 
-	const FMeiDouComboDefinition* ComboDefinition = MeiDouComponent->GetActiveComboDefinition();
-	if (!ComboDefinition || !ComboDefinition->AnimationMontage)
+	if (const FMeiDouComboDefinition* ComboDefinition = MeiDouComponent->GetActiveComboDefinition())
 	{
+		if (ComboDefinition->AnimationMontage)
+		{
+			// play result montages from their default start, unlike pose inputs that always use "Pose" section
+			// TODO: make more consistent (either start all from "Pose" or not)
+			const float MontageLength = PlayAnimMontage(ComboDefinition->AnimationMontage, 1.f);
+			if (MontageLength <= 0.f)
+			{
+				UE_LOG(
+					LogTemp,
+					Warning,
+					TEXT("Could not play MeiDou result montage for combo '%s'. Check montage slot setup."),
+					*ComboDefinition->ComboId.ToString()
+				);
+				if (GEngine)
+				{
+					const FString FailMessage = FString::Printf(
+						TEXT("MeiDou result montage failed: %s"),
+						*GetNameSafe(ComboDefinition->AnimationMontage)
+					);
+					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, FailMessage);
+				}
+				MeiDouComponent->OnRequestedAnimationFailed();
+			}
+		}
+		else
+		{
+			MeiDouComponent->OnRequestedAnimationFailed();
+		}
+	}
+	else
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				2.0f,
+				FColor::Red,
+				TEXT("MeiDou Combo Resolved but no active definition")
+			);
+		}
 		MeiDouComponent->OnRequestedAnimationFailed();
+	}
+
+	if (!GEngine)
+	{
 		return;
 	}
 
-	// Result montages from default start (poses use section "Pose").
-	const float MontageLength = PlayAnimMontage(ComboDefinition->AnimationMontage, 1.f);
-	if (MontageLength <= 0.f)
-	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("Could not play MeiDou result montage for combo '%s'. Check montage slot setup."),
-			*ComboDefinition->ComboId.ToString()
-		);
-		MeiDouComponent->OnRequestedAnimationFailed();
-	}
+	const FString Message = FString::Printf(
+		TEXT("MeiDou Combo Resolved: %s"),
+		*Result.ComboId.ToString()
+	);
+
+	GEngine->AddOnScreenDebugMessage(
+		-1,
+		2.5f,
+		FColor::Green,
+		Message
+	);
 }
 
-void AMaidCharacter::PlayMeiDouFail(const FMeiDouResolvedCombo& /*Result*/)
+void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 {
 	if (!MeiDouComponent)
 	{
@@ -753,33 +636,45 @@ void AMaidCharacter::PlayMeiDouFail(const FMeiDouResolvedCombo& /*Result*/)
 		MovementComponent->StopMovementImmediately();
 	}
 
-	ApplyGameplayStateMeiDouFailed();
+	CharacterState = ECharacterState::ECS_MeiDouFailed;
 
-	UAnimMontage* FailMontage = MeiDouComponent->GetFailMontage();
-	if (!FailMontage)
+	if (!MeiDouFailMontage)
 	{
-		ApplyGameplayStateIdle();
+		CharacterState = ECharacterState::ECS_Idle;
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
 	}
 
-	const float MontageLength = PlayAnimMontage(FailMontage, 1.f);
+	const float MontageLength = PlayAnimMontage(MeiDouFailMontage, 1.f);
 	if (MontageLength <= 0.f)
 	{
-		ApplyGameplayStateIdle();
+		CharacterState = ECharacterState::ECS_Idle;
 		UE_LOG(
 			LogTemp,
 			Warning,
 			TEXT("Could not play MeiDou fail montage. Check montage slot setup.")
 		);
+
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
 	}
 
 	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
 	{
-		AnimInstance->Montage_SetEndDelegate(OnMeiDouFailMontageEnded, FailMontage);
+		AnimInstance->Montage_SetEndDelegate(OnMeiDouFailMontageEnded, MeiDouFailMontage);
 	}
+
+	if (!GEngine)
+	{
+		return;
+	}
+
+	GEngine->AddOnScreenDebugMessage(
+		-1,
+		2.0f,
+		FColor::Yellow,
+		TEXT("MeiDou combo failed")
+	);
 }
 
 void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
@@ -788,15 +683,14 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 	{
 		SetMeiDouMirrorFlag(GetMesh(), false);
 
-		if (CharacterStateComponent
-			&& CharacterStateComponent->GetMeiDouLayerState() == EMeiDouLayerState::Active)
+		if (CharacterState == ECharacterState::ECS_MeiDouActive)
 		{
-			ApplyGameplayStateIdle();
+			CharacterState = ECharacterState::ECS_Idle;
 		}
 		return;
 	}
 
-	ApplyGameplayStateMeiDouActive();
+	CharacterState = ECharacterState::ECS_MeiDouActive;
 	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
 		MovementComponent->StopMovementImmediately();
@@ -805,15 +699,21 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 
 bool AMaidCharacter::CanStartDash() const
 {
-	if (bHasDied || !CharacterStateComponent)
+	if (bHasDied)
 	{
 		return false;
 	}
 
-	return CharacterStateComponent->GetOverall() == ECharacterOverallState::Idle;
+	switch (CharacterState)
+	{
+	case ECharacterState::ECS_Idle:
+		return true;
+	default:
+		return false;
+	}
 }
 
-void AMaidCharacter::NotifyDashStarted(const bool bGrantLegacyTimedIFrames)
+void AMaidCharacter::NotifyDashStarted()
 {
 	if (bHasDied)
 	{
@@ -825,10 +725,9 @@ void AMaidCharacter::NotifyDashStarted(const bool bGrantLegacyTimedIFrames)
 		AttackComponent->CloseHitWindow();
 	}
 
-	ApplyGameplayStateDashing();
+	CharacterState = ECharacterState::ECS_Dashing;
 
-	// Prefer AnimNotifyState_DashIFrames on dash content; legacy timed i-frames as bridge.
-	if (bGrantLegacyTimedIFrames && IsPlayerControlled())
+	if (IsPlayerControlled())
 	{
 		GrantIFrames(DashIFrameDuration);
 	}
@@ -836,33 +735,30 @@ void AMaidCharacter::NotifyDashStarted(const bool bGrantLegacyTimedIFrames)
 
 void AMaidCharacter::NotifyDashEnded()
 {
-	SetIFrameOverrideActive(false);
-
 	if (bHasDied)
 	{
 		return;
 	}
 
-	if (CharacterStateComponent && CharacterStateComponent->IsDashing())
+	if (CharacterState == ECharacterState::ECS_Dashing)
 	{
-		ApplyGameplayStateIdle();
+		CharacterState = ECharacterState::ECS_Idle;
 	}
 }
 
-void AMaidCharacter::SetIFrameOverrideActive(const bool bActive)
+ECharacterState AMaidCharacter::GetCharacterState() const
 {
-	bIFrameOverrideActive = bActive;
+	return CharacterState;
 }
 
 bool AMaidCharacter::IsDead() const
 {
-	// Primary truth: Health pool. bHasDied is set on deplete for presentation/flow.
-	if (HealthComponent)
+	if (bHasDied)
 	{
-		return HealthComponent->IsDead() || bHasDied;
+		return true;
 	}
 
-	return bHasDied;
+	return HealthComponent && HealthComponent->IsDead();
 }
 
 void AMaidCharacter::ResetForFlowRestart()
@@ -870,18 +766,10 @@ void AMaidCharacter::ResetForFlowRestart()
 	bHasDied = false;
 	bDamageReactionActive = false;
 	InvulnerableUntilTime = 0.f;
-	bIFrameOverrideActive = false;
+	ComboCount = 0;
+	CachedAttackInputTime = 0.f;
 	NextDamageSectionIndex = 0;
-
-	if (AttackComponent)
-	{
-		AttackComponent->ResetComboRuntime();
-	}
-
-	if (CharacterStateComponent)
-	{
-		CharacterStateComponent->ResetToDefaults();
-	}
+	CharacterState = ECharacterState::ECS_Idle;
 
 	SetLifeSpan(0.f);
 
@@ -925,11 +813,6 @@ void AMaidCharacter::GrantIFrames(const float DurationSeconds)
 
 bool AMaidCharacter::HasActiveIFrames() const
 {
-	if (bIFrameOverrideActive)
-	{
-		return true;
-	}
-
 	if (!GetWorld())
 	{
 		return false;

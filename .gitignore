@@ -73,7 +73,3 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
-
-# Other internal files
-docs/*
-AGENTS.md

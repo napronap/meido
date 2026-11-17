@@ -2,71 +2,30 @@
 
 
 #include "ActorComponents/LockOnComponent.h"
-
-#include "Algo/Sort.h"
-#include "Blueprint/UserWidget.h"
-#include "Engine/EngineTypes.h"
 #include "GameFramework/Character.h"
-#include "GameFramework/PlayerController.h"
-#include "Interfaces/Targetable.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "UObject/ConstructorHelpers.h"
+#include "Interfaces/Targetable.h"
+#include "Algo/Sort.h" // arriba en el cpp
 
+// Sets default values for this component's properties
 ULockOnComponent::ULockOnComponent()
 {
-	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = false;
-
-	TargetObjectType.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
-	// Default Content marker if present (author can override / clear on the native component).
-	static ConstructorHelpers::FClassFinder<UUserWidget> DefaultMarker(
-		TEXT("/Game/Blueprints/Widgets/WBP_LockOnMarker")
-	);
-	if (DefaultMarker.Succeeded())
-	{
-		MarkerWidgetClass = DefaultMarker.Class;
-	}
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
+
+// Called when the game starts
 void ULockOnComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
 	OwnerCharacter = Cast<ACharacter>(GetOwner());
-}
-
-void ULockOnComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	DestroyMarkerWidget();
-	CurrentTarget = nullptr;
-	Super::EndPlay(EndPlayReason);
-}
-
-void ULockOnComponent::TickComponent(
-	float DeltaTime,
-	ELevelTick TickType,
-	FActorComponentTickFunction* ThisTickFunction
-)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	UpdateMarkerScreenPosition();
 }
 
 void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 {
-	OutTargets.Reset();
-
-	if (!OwnerCharacter || !GetWorld())
-	{
-		return;
-	}
-
-	if (TargetObjectType.Num() == 0)
-	{
-		return;
-	}
-
 	TArray<AActor*> Overlaps;
+
 	UKismetSystemLibrary::SphereOverlapActors(
 		GetWorld(),
 		OwnerCharacter->GetActorLocation(),
@@ -79,85 +38,80 @@ void ULockOnComponent::FindTargets(TArray<AActor*>& OutTargets) const
 
 	for (AActor* Actor : Overlaps)
 	{
-		if (!Actor)
-		{
-			continue;
-		}
+		if (!Actor) continue;
 
-		if (Actor->GetClass()->ImplementsInterface(UTargetable::StaticClass())
-			&& ITargetable::Execute_CanBeTargeted(Actor))
+		if (Actor->Implements<UTargetable>())
 		{
-			OutTargets.Add(Actor);
+			const bool bCanBeTargeted = ITargetable::Execute_CanBeTargeted(Actor);
+
+			if (bCanBeTargeted)
+			{
+				OutTargets.Add(Actor);
+			}
 		}
 	}
 }
 
-FVector ULockOnComponent::ResolveTargetWorldLocation(const AActor* Target)
-{
-	if (!Target)
-	{
-		return FVector::ZeroVector;
-	}
-
-	if (Target->GetClass()->ImplementsInterface(UTargetable::StaticClass()))
-	{
-		return ITargetable::Execute_GetTargetLocation(const_cast<AActor*>(Target));
-	}
-
-	return Target->GetActorLocation();
-}
-
-APlayerController* ULockOnComponent::GetOwnerPlayerController() const
+bool ULockOnComponent::TryLockOn()
 {
 	if (!OwnerCharacter)
 	{
-		return nullptr;
+		OnLockOnChanged.Broadcast(nullptr, false);
+		return false;
 	}
-	return Cast<APlayerController>(OwnerCharacter->GetController());
-}
 
-AActor* ULockOnComponent::SelectBestTarget(const TArray<AActor*>& Targets, APlayerController* PC) const
-{
-	if (!PC || Targets.Num() == 0)
+	APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PC)
 	{
-		return nullptr;
+		OnLockOnChanged.Broadcast(nullptr, false);
+		return false;
 	}
 
-	int32 ViewportX = 0;
-	int32 ViewportY = 0;
+	TArray<AActor*> Candidates;
+	FindTargets(Candidates);
+
+	if (Candidates.Num() == 0)
+	{
+		OnLockOnChanged.Broadcast(nullptr, false);
+		return false;
+	}
+
+	int32 ViewportX, ViewportY;
 	PC->GetViewportSize(ViewportX, ViewportY);
-	if (ViewportX <= 0 || ViewportY <= 0)
-	{
-		return nullptr;
-	}
 
-	const FVector2D ScreenCenter(ViewportX * 0.5f, ViewportY * 0.5f);
+	const FVector2D ScreenCenter(
+		ViewportX * 0.5f,
+		ViewportY * 0.5f
+	);
 
 	AActor* BestTarget = nullptr;
 	float BestDistSq = TNumericLimits<float>::Max();
 
-	for (AActor* Target : Targets)
+	for (AActor* Target : Candidates)
 	{
-		if (!Target)
-		{
-			continue;
-		}
+		FVector TargetLocation = Target->GetActorLocation();
 
-		const FVector TargetLocation = ResolveTargetWorldLocation(Target);
+		
+		if (Target->Implements<UTargetable>())
+		{
+			TargetLocation = ITargetable::Execute_GetTargetLocation(Target);
+		}
 
 		FVector2D ScreenPos;
-		if (!PC->ProjectWorldLocationToScreen(TargetLocation, ScreenPos))
-		{
-			continue;
-		}
+		const bool bOnScreen =
+			PC->ProjectWorldLocationToScreen(TargetLocation, ScreenPos);
 
-		if (ScreenPos.X < 0.f || ScreenPos.Y < 0.f
-			|| ScreenPos.X > ViewportX || ScreenPos.Y > ViewportY)
-		{
+		if (!bOnScreen)
 			continue;
-		}
 
-		const float DistSq = FVector2D::DistSquared(ScreenPos, ScreenCenter);
+		// avoid extreme borders (probably fine though)
+		if (ScreenPos.X < 0.f || ScreenPos.Y < 0.f ||
+			ScreenPos.X > ViewportX || ScreenPos.Y > ViewportY)
+			continue;
+
+		const float DistSq =
+			FVector2D::DistSquared(ScreenPos, ScreenCenter);
+
 		if (DistSq < BestDistSq)
 		{
 			BestDistSq = DistSq;
@@ -165,57 +119,24 @@ AActor* ULockOnComponent::SelectBestTarget(const TArray<AActor*>& Targets, APlay
 		}
 	}
 
-	return BestTarget;
+	if (BestTarget)
+	{
+		CurrentTarget = BestTarget;
+		bCanSwitchTarget = true; // reset
+		OnLockOnChanged.Broadcast(BestTarget, true);
+		return true;
+	}
+
+	OnLockOnChanged.Broadcast(nullptr, false);
+	return false;
 }
 
-bool ULockOnComponent::TryLockOn()
-{
-	if (!OwnerCharacter)
-	{
-		BroadcastLockOnChanged(nullptr, false);
-		return false;
-	}
-
-	APlayerController* PC = GetOwnerPlayerController();
-	if (!PC)
-	{
-		BroadcastLockOnChanged(nullptr, false);
-		return false;
-	}
-
-	TArray<AActor*> Candidates;
-	FindTargets(Candidates);
-
-	AActor* BestTarget = SelectBestTarget(Candidates, PC);
-	if (!BestTarget)
-	{
-		BroadcastLockOnChanged(nullptr, false);
-		return false;
-	}
-
-	CurrentTarget = BestTarget;
-	bCanSwitchTarget = true;
-	BroadcastLockOnChanged(BestTarget, true);
-
-	if (bDrawDebugLockOn && GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 1.2f, FColor::Cyan, TEXT("LockOn: acquired"));
-	}
-
-	return true;
-}
 
 void ULockOnComponent::ClearLockOn()
 {
-	const bool bHadTarget = CurrentTarget != nullptr;
 	CurrentTarget = nullptr;
 	bCanSwitchTarget = true;
-	BroadcastLockOnChanged(nullptr, false);
-
-	if (bHadTarget && bDrawDebugLockOn && GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 1.2f, FColor::Cyan, TEXT("LockOn: cleared"));
-	}
+	OnLockOnChanged.Broadcast(nullptr, false);
 }
 
 bool ULockOnComponent::IsLockedOn()
@@ -229,31 +150,34 @@ AActor* ULockOnComponent::GetCurrentTarget()
 	{
 		return nullptr;
 	}
+
 	return CurrentTarget;
 }
 
-void ULockOnComponent::HandleSwitchInput(const float AxisValue)
+void ULockOnComponent::HandleSwitchInput(float AxisValue)
 {
 	if (!IsLockedOn())
-	{
 		return;
-	}
+
+	// deadzone although it's super low because I found it annoying sometimes target wouldn't switch
+	// probably will remove this check. Deadzone is not important since camera is locked anyway and you're not supposed expect a move/change target behavior
+	float StickDeadZone = 0.001f;
 
 	if (!bCanSwitchTarget)
 	{
-		if (FMath::Abs(AxisValue) <= SwitchInputDeadZone)
+		if (FMath::Abs(AxisValue) <= StickDeadZone)
 		{
 			bCanSwitchTarget = true;
 		}
 		return;
 	}
 
-	if (AxisValue > SwitchInputDeadZone)
+	if (AxisValue > StickDeadZone)
 	{
 		SwitchTarget(+1);
 		bCanSwitchTarget = false;
 	}
-	else if (AxisValue < -SwitchInputDeadZone)
+	else if (AxisValue < -StickDeadZone)
 	{
 		SwitchTarget(-1);
 		bCanSwitchTarget = false;
@@ -265,28 +189,24 @@ void ULockOnComponent::HandleSwitchReleased()
 	bCanSwitchTarget = true;
 }
 
-void ULockOnComponent::SwitchTarget(const int32 Direction)
+
+
+void ULockOnComponent::SwitchTarget(int32 Direction)
 {
 	if (!RefreshCurrentTarget() || !OwnerCharacter || !CurrentTarget)
-	{
 		return;
-	}
 
-	APlayerController* PC = GetOwnerPlayerController();
+	APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
 	if (!PC)
-	{
 		return;
-	}
 
 	TArray<AActor*> Candidates;
 	FindTargets(Candidates);
-	if (Candidates.Num() <= 1)
-	{
-		return;
-	}
 
-	int32 ViewportX = 0;
-	int32 ViewportY = 0;
+	if (Candidates.Num() <= 1)
+		return;
+
+	int32 ViewportX, ViewportY;
 	PC->GetViewportSize(ViewportX, ViewportY);
 
 	struct FScreenTarget
@@ -296,41 +216,50 @@ void ULockOnComponent::SwitchTarget(const int32 Direction)
 	};
 
 	TArray<FScreenTarget> Visible;
+
 	Visible.Reserve(Candidates.Num());
 
+	auto GetTargetWorldPos = [](AActor* Actor) -> FVector
+	{
+		if (!Actor) return FVector::ZeroVector;
+
+		if (Actor->Implements<UTargetable>())
+		{
+			return ITargetable::Execute_GetTargetLocation(Actor);
+		}
+
+		return Actor->GetActorLocation();
+	};
+
+	// 1) find all and only use on screen targets
 	for (AActor* Target : Candidates)
 	{
-		if (!Target)
-		{
-			continue;
-		}
+		if (!Target) continue;
 
-		const FVector WorldPos = ResolveTargetWorldLocation(Target);
+		const FVector WorldPos = GetTargetWorldPos(Target);
+
 		FVector2D ScreenPos;
 		if (!PC->ProjectWorldLocationToScreen(WorldPos, ScreenPos))
-		{
 			continue;
-		}
 
-		if (ScreenPos.X < 0.f || ScreenPos.X > ViewportX
-			|| ScreenPos.Y < 0.f || ScreenPos.Y > ViewportY)
-		{
+		// on-screen check
+		if (ScreenPos.X < 0.f || ScreenPos.X > ViewportX ||
+			ScreenPos.Y < 0.f || ScreenPos.Y > ViewportY)
 			continue;
-		}
 
 		Visible.Add({Target, ScreenPos});
 	}
 
 	if (Visible.Num() <= 1)
-	{
 		return;
-	}
 
+	// 2) order by x axis (left > right)
 	Algo::Sort(Visible, [](const FScreenTarget& A, const FScreenTarget& B)
 	{
 		return A.ScreenPos.X < B.ScreenPos.X;
 	});
 
+	// 3) find current target index
 	int32 CurrentIndex = INDEX_NONE;
 	for (int32 i = 0; i < Visible.Num(); ++i)
 	{
@@ -341,13 +270,14 @@ void ULockOnComponent::SwitchTarget(const int32 Direction)
 		}
 	}
 
+	// check if current does not exist (probably shouldn't happen)
 	if (CurrentIndex == INDEX_NONE)
-	{
 		return;
-	}
 
+	// 4) find closest (+1 right, -1 left) with wrapping
 	const int32 Step = (Direction > 0) ? +1 : -1;
 	int32 NextIndex = CurrentIndex + Step;
+	
 	if (NextIndex < 0)
 	{
 		NextIndex = Visible.Num() - 1;
@@ -361,11 +291,7 @@ void ULockOnComponent::SwitchTarget(const int32 Direction)
 	CurrentTarget = Visible[NextIndex].Actor;
 	if (CurrentTarget != PreviousTarget)
 	{
-		BroadcastLockOnChanged(CurrentTarget, true);
-		if (bDrawDebugLockOn && GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Cyan, TEXT("LockOn: switched"));
-		}
+		OnLockOnChanged.Broadcast(CurrentTarget, true);
 	}
 }
 
@@ -376,7 +302,7 @@ bool ULockOnComponent::IsTargetValidForLockOn(const AActor* Target) const
 		return false;
 	}
 
-	if (!Target->GetClass()->ImplementsInterface(UTargetable::StaticClass()))
+	if (!Target->Implements<UTargetable>())
 	{
 		return false;
 	}
@@ -401,83 +327,12 @@ bool ULockOnComponent::RefreshCurrentTarget()
 	return TryLockOn();
 }
 
-void ULockOnComponent::BroadcastLockOnChanged(AActor* NewTarget, const bool bSuccess)
+
+// Called every frame
+void ULockOnComponent::TickComponent(float DeltaTime, ELevelTick TickType,
+                                     FActorComponentTickFunction* ThisTickFunction)
 {
-	OnLockOnChanged.Broadcast(NewTarget, bSuccess);
-	ApplyMarkerForLockState(NewTarget, bSuccess);
-}
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-void ULockOnComponent::ApplyMarkerForLockState(AActor* NewTarget, const bool bSuccess)
-{
-	const bool bShow = bShowLockOnMarker && bSuccess && NewTarget != nullptr && MarkerWidgetClass;
-
-	if (!bShow)
-	{
-		DestroyMarkerWidget();
-		SetComponentTickEnabled(false);
-		return;
-	}
-
-	APlayerController* PC = GetOwnerPlayerController();
-	if (!PC)
-	{
-		DestroyMarkerWidget();
-		SetComponentTickEnabled(false);
-		return;
-	}
-
-	if (!ActiveMarkerWidget)
-	{
-		ActiveMarkerWidget = CreateWidget<UUserWidget>(PC, MarkerWidgetClass);
-		if (ActiveMarkerWidget)
-		{
-			ActiveMarkerWidget->AddToViewport(50);
-			ActiveMarkerWidget->SetAlignmentInViewport(FVector2D(0.5f, 0.5f));
-			ActiveMarkerWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-		}
-	}
-
-	if (ActiveMarkerWidget)
-	{
-		SetComponentTickEnabled(true);
-		UpdateMarkerScreenPosition();
-	}
-	else
-	{
-		SetComponentTickEnabled(false);
-	}
-}
-
-void ULockOnComponent::DestroyMarkerWidget()
-{
-	if (ActiveMarkerWidget)
-	{
-		ActiveMarkerWidget->RemoveFromParent();
-		ActiveMarkerWidget = nullptr;
-	}
-}
-
-void ULockOnComponent::UpdateMarkerScreenPosition()
-{
-	if (!ActiveMarkerWidget || !CurrentTarget)
-	{
-		return;
-	}
-
-	APlayerController* PC = GetOwnerPlayerController();
-	if (!PC)
-	{
-		return;
-	}
-
-	const FVector WorldPos = ResolveTargetWorldLocation(CurrentTarget);
-	FVector2D ScreenPos;
-	if (!PC->ProjectWorldLocationToScreen(WorldPos, ScreenPos))
-	{
-		ActiveMarkerWidget->SetVisibility(ESlateVisibility::Collapsed);
-		return;
-	}
-
-	ActiveMarkerWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-	ActiveMarkerWidget->SetPositionInViewport(ScreenPos + MarkerScreenOffset, true);
+	// ...
 }

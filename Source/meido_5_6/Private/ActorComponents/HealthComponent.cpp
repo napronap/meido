@@ -2,13 +2,15 @@
 
 
 #include "ActorComponents/HealthComponent.h"
-#include "GameFramework/Actor.h"
 
+// Sets default values for this component's properties
 UHealthComponent::UHealthComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
+
+// Called when the game starts
 void UHealthComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -16,55 +18,13 @@ void UHealthComponent::BeginPlay()
 	CurrentHealth = FMath::Clamp(MaxHealth, 0.f, MaxHealth);
 	bIsDead = CurrentHealth <= 0.f;
 
-	// UE path: ApplyDamage → TakeDamage → OnTakeAnyDamage → ApplyCombatDamage
 	if (AActor* OwnerActor = GetOwner())
 	{
 		OwnerActor->OnTakeAnyDamage.AddDynamic(this, &UHealthComponent::HandleOwnerTakeAnyDamage);
 	}
 }
 
-void UHealthComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	if (AActor* OwnerActor = GetOwner())
-	{
-		OwnerActor->OnTakeAnyDamage.RemoveDynamic(this, &UHealthComponent::HandleOwnerTakeAnyDamage);
-	}
-
-	Super::EndPlay(EndPlayReason);
-}
-
-float UHealthComponent::ApplyCombatDamage(const FCombatDamageRequest& Request)
-{
-	if (bIsDead || Request.Amount <= 0.f)
-	{
-		return 0.f;
-	}
-
-	const float PreviousHealth = CurrentHealth;
-	CurrentHealth = FMath::Clamp(CurrentHealth - Request.Amount, 0.f, MaxHealth);
-	const float AppliedDamage = PreviousHealth - CurrentHealth;
-
-	if (AppliedDamage <= 0.f)
-	{
-		return 0.f;
-	}
-
-	AActor* Causer = Request.DamageCauser.Get();
-	AController* Instigator = Request.Instigator.Get();
-
-	OnDamageTaken.Broadcast(this, AppliedDamage, CurrentHealth, Causer, Instigator);
-	OnHealthChanged.Broadcast(this, CurrentHealth, MaxHealth, -AppliedDamage);
-
-	if (CurrentHealth <= 0.f && !bIsDead)
-	{
-		bIsDead = true;
-		OnHealthDepleted.Broadcast(this, Causer);
-	}
-
-	return AppliedDamage;
-}
-
-void UHealthComponent::Heal(const float Amount)
+void UHealthComponent::Heal(float Amount)
 {
 	if (Amount <= 0.f || bIsDead)
 	{
@@ -99,12 +59,27 @@ void UHealthComponent::HandleOwnerTakeAnyDamage(
 	AActor* DamageCauser
 )
 {
-	(void)DamagedActor;
-	(void)DamageType;
+	if (!DamagedActor || bIsDead || Damage <= 0.f)
+	{
+		return;
+	}
 
-	FCombatDamageRequest Request;
-	Request.Amount = Damage;
-	Request.DamageCauser = DamageCauser;
-	Request.Instigator = InstigatedBy;
-	ApplyCombatDamage(Request);
+	const float PreviousHealth = CurrentHealth;
+	CurrentHealth = FMath::Clamp(CurrentHealth - Damage, 0.f, MaxHealth);
+	const float AppliedDamage = PreviousHealth - CurrentHealth;
+
+	if (AppliedDamage <= 0.f)
+	{
+		return;
+	}
+
+	OnDamageTaken.Broadcast(this, AppliedDamage, CurrentHealth, DamageCauser, InstigatedBy);
+	OnHealthChanged.Broadcast(this, CurrentHealth, MaxHealth, -AppliedDamage);
+
+	if (CurrentHealth <= 0.f)
+	{
+		bIsDead = true;
+		OnHealthDepleted.Broadcast(this, DamageCauser);
+	}
 }
+

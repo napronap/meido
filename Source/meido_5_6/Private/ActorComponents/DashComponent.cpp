@@ -8,11 +8,14 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 
+// Sets default values for this component's properties
 UDashComponent::UDashComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
+
+// Called when the game starts
 void UDashComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -24,11 +27,9 @@ void UDashComponent::BeginPlay()
 	}
 }
 
-void UDashComponent::TickComponent(
-	float DeltaTime,
-	ELevelTick TickType,
-	FActorComponentTickFunction* ThisTickFunction
-)
+
+// Called every frame
+void UDashComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
@@ -45,19 +46,17 @@ void UDashComponent::TickComponent(
 		return;
 	}
 
-	// No velocity override — CMC consumes anim root motion while dash anim plays.
 	DashTimeRemaining -= DeltaTime;
 	if (DashTimeRemaining <= 0.f)
 	{
 		EndDash();
+		return;
 	}
+
+	MovementComponent->Velocity = DashDirection * DashSpeed;
 }
 
-bool UDashComponent::TryDash(
-	const FVector2D& MoveInput,
-	const FRotator& ControlRotation,
-	const bool bLockOnActive
-)
+bool UDashComponent::TryDash(const FVector2D& MoveInput, const FRotator& ControlRotation, bool bLockOnActive)
 {
 	if (!CanDash())
 	{
@@ -69,11 +68,13 @@ bool UDashComponent::TryDash(
 
 	if (bLockOnActive)
 	{
+		// Lockon: dash direction follows input
 		DashWorldDirection = ComputeDashWorldDirection(MoveInput, ControlRotation);
 		DashAnimDirection = ComputeDashAnimDirection(DashWorldDirection, ControlRotation);
 	}
 	else
 	{
+		// Non lockon mode: dash follows movement input, but character rotates to face dash direction (like normal movement)
 		DashWorldDirection = ComputeDashWorldDirection(MoveInput, ControlRotation);
 		if (DashWorldDirection.IsNearlyZero())
 		{
@@ -86,9 +87,7 @@ bool UDashComponent::TryDash(
 		{
 			const FRotator CurrentRotation = OwnerMaid->GetActorRotation();
 			const FRotator DashRotation(0.f, DashWorldDirection.Rotation().Yaw, 0.f);
-			OwnerMaid->SetActorRotation(
-				FRotator(CurrentRotation.Pitch, DashRotation.Yaw, CurrentRotation.Roll)
-			);
+			OwnerMaid->SetActorRotation(FRotator(CurrentRotation.Pitch, DashRotation.Yaw, CurrentRotation.Roll));
 		}
 
 		DashAnimDirection = FVector2D(0.f, 1.f);
@@ -113,14 +112,6 @@ void UDashComponent::CancelDash()
 	EndDash();
 }
 
-void UDashComponent::NotifyDashAnimationEnded()
-{
-	if (bIsDashing)
-	{
-		EndDash();
-	}
-}
-
 bool UDashComponent::CanDash() const
 {
 	if (bIsDashing || DashCooldownRemaining > 0.f || !OwnerMaid.IsValid() || !MovementComponent.IsValid())
@@ -141,10 +132,7 @@ bool UDashComponent::CanDash() const
 	return true;
 }
 
-FVector UDashComponent::ComputeDashWorldDirection(
-	const FVector2D& MoveInput,
-	const FRotator& ControlRotation
-) const
+FVector UDashComponent::ComputeDashWorldDirection(const FVector2D& MoveInput, const FRotator& ControlRotation) const
 {
 	FVector2D DashInput = MoveInput;
 	if (DashInput.SizeSquared() < FMath::Square(MinDirectionInput))
@@ -167,10 +155,7 @@ FVector UDashComponent::ComputeDashWorldDirection(
 	return DashWorldDirection;
 }
 
-FVector2D UDashComponent::ComputeDashAnimDirection(
-	const FVector& WorldDirection,
-	const FRotator& ControlRotation
-) const
+FVector2D UDashComponent::ComputeDashAnimDirection(const FVector& WorldDirection, const FRotator& ControlRotation) const
 {
 	const FRotator YawRotation(0.f, ControlRotation.Yaw, 0.f);
 	const FVector LocalDirection = UKismetMathLibrary::InverseTransformDirection(
@@ -191,107 +176,33 @@ void UDashComponent::StartDash(const FVector& InDashDirection, const FVector2D& 
 		return;
 	}
 
-	(void)InDashDirection;
-
+	DashDirection = InDashDirection.GetSafeNormal2D();
 	DashTimeRemaining = DashDuration;
-	// Cooldown starts on End (CP2.1) — not here.
+	DashCooldownRemaining = DashCooldown;
 	bIsDashing = true;
 
 	MovementComponent->StopMovementImmediately();
-
-	bSavedOrientRotationToMovement = MovementComponent->bOrientRotationToMovement;
-	MovementComponent->bOrientRotationToMovement = false;
-
-	SavedAnimRootMotionScale = OwnerMaid->GetAnimRootMotionTranslationScale();
-	OwnerMaid->SetAnimRootMotionTranslationScale(DashRootMotionScale);
-
-	// Allow state-machine / BS dash RM while ABP default is Montages Only.
-	ApplyDashRootMotionMode();
-
 	UpdateDashAnimState(true, AnimDirection);
-	OwnerMaid->NotifyDashStarted(bUseLegacyTimedIFramesOnStart);
+	OwnerMaid->NotifyDashStarted();
 }
 
 void UDashComponent::EndDash()
 {
-	const bool bWasDashing = bIsDashing;
+	if (!OwnerMaid.IsValid() || !MovementComponent.IsValid())
+	{
+		bIsDashing = false;
+		UpdateDashAnimState(false, FVector2D::ZeroVector);
+		return;
+	}
+
 	bIsDashing = false;
 	DashTimeRemaining = 0.f;
-
-	if (bWasDashing)
-	{
-		// Cooldown starts when dash ends.
-		DashCooldownRemaining = DashCooldown;
-	}
-
-	// Leave dash pose before restoring Montages Only so loco doesn't keep feeding RM.
+	MovementComponent->StopMovementImmediately();
 	UpdateDashAnimState(false, FVector2D::ZeroVector);
-	RestoreRootMotionMode();
-
-	if (OwnerMaid.IsValid())
-	{
-		OwnerMaid->SetAnimRootMotionTranslationScale(SavedAnimRootMotionScale);
-	}
-
-	if (MovementComponent.IsValid())
-	{
-		MovementComponent->bOrientRotationToMovement = bSavedOrientRotationToMovement;
-		MovementComponent->StopMovementImmediately();
-	}
-
-	if (OwnerMaid.IsValid() && bWasDashing)
-	{
-		OwnerMaid->NotifyDashEnded();
-	}
+	OwnerMaid->NotifyDashEnded();
 }
 
-UAnimInstance* UDashComponent::GetOwnerAnimInstance() const
-{
-	if (!OwnerMaid.IsValid() || !OwnerMaid->GetMesh())
-	{
-		return nullptr;
-	}
-
-	return OwnerMaid->GetMesh()->GetAnimInstance();
-}
-
-void UDashComponent::ApplyDashRootMotionMode()
-{
-	bRootMotionModeOverridden = false;
-
-	if (!bForceRootMotionFromEverythingWhileDashing)
-	{
-		return;
-	}
-
-	UAnimInstance* AnimInstance = GetOwnerAnimInstance();
-	if (!AnimInstance)
-	{
-		return;
-	}
-
-	// RootMotionMode is a public UPROPERTY; no getter in UE 5.6.
-	SavedRootMotionMode = AnimInstance->RootMotionMode;
-	AnimInstance->SetRootMotionMode(ERootMotionMode::RootMotionFromEverything);
-	bRootMotionModeOverridden = true;
-}
-
-void UDashComponent::RestoreRootMotionMode()
-{
-	if (!bRootMotionModeOverridden)
-	{
-		return;
-	}
-
-	if (UAnimInstance* AnimInstance = GetOwnerAnimInstance())
-	{
-		AnimInstance->SetRootMotionMode(SavedRootMotionMode);
-	}
-
-	bRootMotionModeOverridden = false;
-}
-
-void UDashComponent::UpdateDashAnimState(const bool bDashing, const FVector2D& AnimDirection) const
+void UDashComponent::UpdateDashAnimState(bool bDashing, const FVector2D& AnimDirection) const
 {
 	if (!OwnerMaid.IsValid() || !OwnerMaid->GetMesh())
 	{
@@ -308,3 +219,4 @@ void UDashComponent::UpdateDashAnimState(const bool bDashing, const FVector2D& A
 	MaidAnimInstance->DashRight = bDashing ? AnimDirection.X : 0.f;
 	MaidAnimInstance->DashForward = bDashing ? AnimDirection.Y : 0.f;
 }
+

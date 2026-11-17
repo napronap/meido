@@ -24,6 +24,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Task", meta=(ClampMin="0.0", UIMin="0.0"))
 	float AcceptableRange = 220.f;
 
+	UPROPERTY(EditAnywhere, Category = "Task", meta = (ClampMin = "0.1"))
+	float MaxApproachSeconds = 8.f;
+
 	UPROPERTY(EditAnywhere, Category="Task|Pathfinding", meta=(ClampMin="0.05", UIMin="0.05"))
 	float RepathInterval = 0.25f;
 
@@ -31,6 +34,7 @@ protected:
 	float PathPointAcceptanceRadius = 50.f;
 
 private:
+	float ApproachStartTime = 0.f;
 	float NextRepathTime = 0.f;
 	int32 NextPathPointIndex = 1;
 	TArray<FVector> CachedPathPoints;

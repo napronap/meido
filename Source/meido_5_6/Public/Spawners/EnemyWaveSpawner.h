@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Types/DemoContentTypes.h"
 #include "EnemyWaveSpawner.generated.h"
 
 class AEnemyMaid;
@@ -27,6 +28,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Spawner")
 	void ResetWave();
 
+	/** Stops/reset the executor, then installs the GameMode's rules. */
+	bool ConfigureForDemo(const FMeidoWaveConfig& InWaveConfig);
+
+	UFUNCTION(BlueprintPure, Category = "Spawner")
+	int32 GetRemainingEnemyCount() const;
+
+	UFUNCTION(BlueprintPure, Category = "Spawner")
+	int32 GetTotalEnemyCount() const { return TotalEnemiesToSpawn; }
+
+	UPROPERTY(BlueprintAssignable, Category = "Spawner")
+	FOnMeidoWaveProgress OnWaveProgressChanged;
+
 	UFUNCTION(BlueprintPure, Category="Spawner")
 	int32 GetSpawnedCount() const { return SpawnedCount; }
 
@@ -44,6 +57,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawner")
 	TSubclassOf<AEnemyMaid> EnemyClass;
@@ -78,6 +92,8 @@ private:
 	int32 AliveCount = 0;
 	bool bWaveActive = false;
 	bool bWaveCompleted = false;
+	bool bResettingWave = false;
+	bool bManagedByDemoFlow = false;
 
 	void TrySpawn();
 	void CleanupAliveEnemies();
@@ -87,4 +103,9 @@ private:
 
 	UFUNCTION()
 	void HandleEnemyDestroyed(AActor* DestroyedActor);
+
+	UFUNCTION()
+	void HandleEnemyHealthDepleted(UHealthComponent* InHealthComponent, AActor* InDamageCauser);
+
+	void BroadcastWaveProgress();
 };

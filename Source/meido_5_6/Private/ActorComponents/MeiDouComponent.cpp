@@ -194,6 +194,29 @@ void UMeiDouComponent::ResetCombo()
 	ClearComboInputTimeout();
 }
 
+void UMeiDouComponent::ResetForFlowRestart()
+{
+	ClearComboInputTimeout();
+	QueuedPoseInputs.Reset();
+	ClearActiveComboDefinition();
+	ClearPendingResult();
+	ClearPendingFail();
+	SpawnedResultActor.Reset();
+	bDestroySpawnedResultActorOnActionEnd = false;
+	const TArray<TWeakObjectPtr<AActor>> ResultsToReset = RunSpawnedResultActors;
+	RunSpawnedResultActors.Reset();
+	for (const TWeakObjectPtr<AActor>& ResultEntry : ResultsToReset)
+	{
+		if (AActor* RunResultActor = ResultEntry.Get())
+		{
+			RunResultActor->Destroy();
+		}
+	}
+	ResetComboAndNotify(EMeiDouBufferChangeReason::ClearedOther);
+	SetMeiDouState(EMeiDouState::EMDS_Idle);
+	OnMeiDouControlLockChanged.Broadcast(false);
+}
+
 void UMeiDouComponent::ResetComboAndNotify(const EMeiDouBufferChangeReason Reason)
 {
 	ResetCombo();
@@ -614,11 +637,11 @@ void UMeiDouComponent::DebugMessage(const FString& Message, const FColor& Color,
 
 void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 {
-	UWorld* World = GetWorld();
+	UWorld* ResultWorld = GetWorld();
 	AActor* OwnerActor = GetOwner();
 	UClass* SpawnClass = SpawnConfig.ResolveSpawnClass();
 
-	if (!World || !OwnerActor || !SpawnClass)
+	if (!ResultWorld || !OwnerActor || !SpawnClass)
 	{
 		DebugMessage(TEXT("MeiDou Spawn ignored: no owner/world/class (set Soft or hard SpawnedActorClass)"), FColor::Red);
 		return;
@@ -634,7 +657,7 @@ void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 
 	APawn* InstigatorPawn = Cast<APawn>(OwnerActor);
 
-	AActor* SpawnedActor = World->SpawnActorDeferred<AActor>(
+	AActor* SpawnedActor = ResultWorld->SpawnActorDeferred<AActor>(
 		SpawnClass,
 		SpawnTransform,
 		OwnerActor,
@@ -668,6 +691,8 @@ void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 	DebugMessage(FString::Printf(TEXT("MeiDou Spawned: %s"), *GetNameSafe(SpawnedActor)), FColor::Green);
 
 	SpawnedResultActor = SpawnedActor;
+	RunSpawnedResultActors.RemoveAll([](const TWeakObjectPtr<AActor>& ResultEntry) { return !ResultEntry.IsValid(); });
+	RunSpawnedResultActors.Add(SpawnedActor);
 	bDestroySpawnedResultActorOnActionEnd = SpawnConfig.bDestroyWhenPoseActiveEnds;
 }
 

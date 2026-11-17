@@ -10,7 +10,7 @@ UENUM(BlueprintType)
 enum class EFlowState : uint8
 {
 	MainMenu UMETA(DisplayName = "MainMenu"),
-	/** Reserved for CP4.3 tutorial slides; unused until then. */
+	/** First-run tutorial; gameplay begins after its final slide. */
 	Tutorial UMETA(DisplayName = "Tutorial"),
 	Playing UMETA(DisplayName = "Playing"),
 	Paused UMETA(DisplayName = "Paused"),

@@ -111,6 +111,8 @@ public:
 	bool IsMeiDouActive() const { return MeiDouState != EMeiDouState::EMDS_Idle; }
 
 	void ResetCombo();
+	/** Full run reset: queued poses, result actors and timeout must not survive retry. */
+	void ResetForFlowRestart();
 
 	/** Clear buffer and broadcast (default ClearedOther). */
 	void ResetComboAndNotify(EMeiDouBufferChangeReason Reason);
@@ -240,6 +242,7 @@ private:
 	bool bHasPendingFail = false;
 
 	TWeakObjectPtr<AActor> SpawnedResultActor;
+	TArray<TWeakObjectPtr<AActor>> RunSpawnedResultActors;
 	bool bDestroySpawnedResultActorOnActionEnd = false;
 
 	bool bResultsPreloaded = false;

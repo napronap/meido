@@ -1,8 +1,66 @@
 #include "IA/CombatDirectorSubsystem.h"
+#include "Characters/MaidCharacter.h"
+
+bool UCombatDirectorSubsystem::IsEligibleActor(const AActor* InCandidate) const
+{
+	if (!IsValid(InCandidate) || InCandidate->IsActorBeingDestroyed() || InCandidate->GetWorld() != GetWorld())
+	{
+		return false;
+	}
+	const AMaidCharacter* CandidateMaid = Cast<AMaidCharacter>(InCandidate);
+	return !CandidateMaid || !CandidateMaid->IsDead();
+}
+
+void UCombatDirectorSubsystem::Deinitialize()
+{
+	ActiveAttackers.Reset();
+	HoldAngles.Reset();
+	NextHoldAngleIndex = 0;
+	Super::Deinitialize();
+}
+
+bool UCombatDirectorSubsystem::HasAttackSlot(AActor* InRequester) const
+{
+	return IsEligibleActor(InRequester) && ContainsRequester(InRequester);
+}
+
+void UCombatDirectorSubsystem::SetMaxSimultaneousAttackers(const int32 InMaxAttackers)
+{
+	MaxSimultaneousAttackers = FMath::Max(1, InMaxAttackers);
+	CleanupInvalidAttackers();
+}
+
+float UCombatDirectorSubsystem::RegisterHoldAngle(AActor* InRequester)
+{
+	if (!IsEligibleActor(InRequester))
+	{
+		return 0.f;
+	}
+	for (auto AngleIt = HoldAngles.CreateIterator(); AngleIt; ++AngleIt)
+	{
+		if (!IsEligibleActor(AngleIt.Key().Get()))
+		{
+			AngleIt.RemoveCurrent();
+		}
+	}
+	const TWeakObjectPtr<AActor> RequesterKey(InRequester);
+	if (const float* ExistingAngle = HoldAngles.Find(RequesterKey))
+	{
+		return *ExistingAngle;
+	}
+	const float AssignedAngle = FMath::Fmod(static_cast<float>(NextHoldAngleIndex++) * 137.508f, 360.f);
+	HoldAngles.Add(RequesterKey, AssignedAngle);
+	return AssignedAngle;
+}
+
+void UCombatDirectorSubsystem::UnregisterHoldAngle(AActor* InRequester)
+{
+	HoldAngles.Remove(TWeakObjectPtr<AActor>(InRequester));
+}
 
 bool UCombatDirectorSubsystem::RequestAttackSlot(AActor* Requester)
 {
-	if (!Requester)
+	if (!IsEligibleActor(Requester))
 	{
 		return false;
 	}
@@ -44,7 +102,7 @@ int32 UCombatDirectorSubsystem::GetActiveAttackersCount() const
 	int32 ValidCount = 0;
 	for (const TWeakObjectPtr<AActor>& Entry : ActiveAttackers)
 	{
-		if (Entry.IsValid())
+		if (IsEligibleActor(Entry.Get()))
 		{
 			++ValidCount;
 		}
@@ -56,9 +114,9 @@ int32 UCombatDirectorSubsystem::GetActiveAttackersCount() const
 void UCombatDirectorSubsystem::CleanupInvalidAttackers()
 {
 	ActiveAttackers.RemoveAll(
-		[](const TWeakObjectPtr<AActor>& Entry)
+		[this](const TWeakObjectPtr<AActor>& Entry)
 		{
-			return !Entry.IsValid();
+			return !IsEligibleActor(Entry.Get());
 		}
 	);
 }
@@ -75,4 +133,3 @@ bool UCombatDirectorSubsystem::ContainsRequester(AActor* Requester) const
 
 	return false;
 }
-

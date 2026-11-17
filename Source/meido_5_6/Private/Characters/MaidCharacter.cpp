@@ -867,6 +867,11 @@ bool AMaidCharacter::IsDead() const
 
 void AMaidCharacter::ResetForFlowRestart()
 {
+	// Clear pending poses before Montage_Stop can emit animation-end callbacks.
+	if (MeiDouComponent)
+	{
+		MeiDouComponent->ResetForFlowRestart();
+	}
 	bHasDied = false;
 	bDamageReactionActive = false;
 	InvulnerableUntilTime = 0.f;

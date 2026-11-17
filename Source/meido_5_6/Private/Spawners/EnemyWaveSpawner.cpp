@@ -1,19 +1,28 @@
 #include "Spawners/EnemyWaveSpawner.h"
 #include "ActorComponents/HealthComponent.h"
 #include "Characters/EnemyMaid.h"
+#include "Components/SceneComponent.h"
+#include "GameModes/MeidoDemoGameMode.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
 AEnemyWaveSpawner::AEnemyWaveSpawner()
 {
 	PrimaryActorTick.bCanEverTick = false;
+	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("SpawnRoot")));
+#if WITH_EDITORONLY_DATA
+	// Show Unreal's default actor marker in the level editor.
+	GetRootComponent()->bVisualizeComponent = true;
+#endif
 }
 
 void AEnemyWaveSpawner::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (bAutoStart)
+	// A placed spawner may BeginPlay before the GM binds it. The demo owns start timing.
+	const bool bDemoWorld = GetWorld() && GetWorld()->GetAuthGameMode<AMeidoDemoGameMode>();
+	if (bAutoStart && !bManagedByDemoFlow && !bDemoWorld)
 	{
 		StartWave();
 	}
@@ -21,7 +30,7 @@ void AEnemyWaveSpawner::BeginPlay()
 
 void AEnemyWaveSpawner::StartWave()
 {
-	if (bWaveActive || bWaveCompleted)
+	if (bResettingWave || bWaveActive || bWaveCompleted)
 	{
 		return;
 	}
@@ -32,6 +41,14 @@ void AEnemyWaveSpawner::StartWave()
 		OnWaveCompleted.Broadcast();
 		return;
 	}
+
+	if (!EnemyClass || !GetWorld())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("EnemyWaveSpawner: assign EnemyClass before starting the wave."));
+		return;
+	}
+	SpawnInterval = FMath::Max(0.05f, SpawnInterval);
+	MaxAliveAtOnce = FMath::Max(1, MaxAliveAtOnce);
 
 	bWaveActive = true;
 
@@ -62,20 +79,91 @@ void AEnemyWaveSpawner::StopWave()
 
 void AEnemyWaveSpawner::ResetWave()
 {
-	StopWave();
-
-	for (const TWeakObjectPtr<AEnemyMaid>& EnemyRef : AliveEnemies)
+	if (bResettingWave)
 	{
-		if (AEnemyMaid* Enemy = EnemyRef.Get())
-		{
-			Enemy->Destroy();
-		}
+		return;
 	}
-
+	StopWave();
+	bResettingWave = true;
+	// Destroy broadcasts synchronously. Detach the tracked array before touching actors.
+	const TArray<TWeakObjectPtr<AEnemyMaid>> EnemiesToReset = AliveEnemies;
 	AliveEnemies.Reset();
 	SpawnedCount = 0;
 	AliveCount = 0;
 	bWaveCompleted = false;
+	for (const TWeakObjectPtr<AEnemyMaid>& EnemyRef : EnemiesToReset)
+	{
+		if (AEnemyMaid* Enemy = EnemyRef.Get())
+		{
+			Enemy->OnDestroyed.RemoveDynamic(this, &AEnemyWaveSpawner::HandleEnemyDestroyed);
+			if (UHealthComponent* EnemyHealth = Enemy->FindComponentByClass<UHealthComponent>())
+			{
+				EnemyHealth->OnHealthDepleted.RemoveDynamic(this, &AEnemyWaveSpawner::HandleEnemyHealthDepleted);
+			}
+			Enemy->Destroy();
+		}
+	}
+	bResettingWave = false;
+	BroadcastWaveProgress();
+}
+
+void AEnemyWaveSpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopWave();
+	bResettingWave = true;
+	for (const TWeakObjectPtr<AEnemyMaid>& EnemyEntry : AliveEnemies)
+	{
+		if (AEnemyMaid* TrackedEnemy = EnemyEntry.Get())
+		{
+			TrackedEnemy->OnDestroyed.RemoveDynamic(this, &AEnemyWaveSpawner::HandleEnemyDestroyed);
+			if (UHealthComponent* TrackedHealth = TrackedEnemy->FindComponentByClass<UHealthComponent>())
+			{
+				TrackedHealth->OnHealthDepleted.RemoveDynamic(this, &AEnemyWaveSpawner::HandleEnemyHealthDepleted);
+			}
+		}
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+bool AEnemyWaveSpawner::ConfigureForDemo(const FMeidoWaveConfig& InWaveConfig)
+{
+	bManagedByDemoFlow = true;
+	ResetWave();
+	EnemyClass = InWaveConfig.EnemyClass;
+	TotalEnemiesToSpawn = FMath::Max(1, InWaveConfig.TotalEnemies);
+	MaxAliveAtOnce = FMath::Clamp(InWaveConfig.MaxAlive, 1, TotalEnemiesToSpawn);
+	SpawnInterval = FMath::Max(0.05f, InWaveConfig.SpawnInterval);
+	InitialDelay = FMath::Max(0.f, InWaveConfig.InitialDelay);
+	BroadcastWaveProgress();
+	return EnemyClass != nullptr;
+}
+
+int32 AEnemyWaveSpawner::GetRemainingEnemyCount() const
+{
+	int32 LivingTrackedEnemies = 0;
+	for (const TWeakObjectPtr<AEnemyMaid>& EnemyEntry : AliveEnemies)
+	{
+		const AEnemyMaid* TrackedEnemy = EnemyEntry.Get();
+		if (IsValid(TrackedEnemy) && !TrackedEnemy->IsDead())
+		{
+			++LivingTrackedEnemies;
+		}
+	}
+	return FMath::Clamp(TotalEnemiesToSpawn - SpawnedCount + LivingTrackedEnemies, 0, TotalEnemiesToSpawn);
+}
+
+void AEnemyWaveSpawner::BroadcastWaveProgress()
+{
+	OnWaveProgressChanged.Broadcast(GetRemainingEnemyCount(), TotalEnemiesToSpawn);
+}
+
+void AEnemyWaveSpawner::HandleEnemyHealthDepleted(UHealthComponent* InHealthComponent, AActor* InDamageCauser)
+{
+	if (!bResettingWave)
+	{
+		// Counter updates on death; completion still waits for the corpse's existing lifespan.
+		BroadcastWaveProgress();
+	}
 }
 
 void AEnemyWaveSpawner::TrySpawn()
@@ -117,8 +205,13 @@ void AEnemyWaveSpawner::TrySpawn()
 	++AliveCount;
 	AliveEnemies.Add(SpawnedEnemy);
 	SpawnedEnemy->OnDestroyed.AddDynamic(this, &AEnemyWaveSpawner::HandleEnemyDestroyed);
+	if (UHealthComponent* SpawnedHealth = SpawnedEnemy->FindComponentByClass<UHealthComponent>())
+	{
+		SpawnedHealth->OnHealthDepleted.AddDynamic(this, &AEnemyWaveSpawner::HandleEnemyHealthDepleted);
+	}
 
 	OnEnemySpawned.Broadcast(SpawnedEnemy);
+	BroadcastWaveProgress();
 }
 
 void AEnemyWaveSpawner::CleanupAliveEnemies()
@@ -165,7 +258,7 @@ void AEnemyWaveSpawner::RemoveAliveEnemy(AEnemyMaid* Enemy)
 
 void AEnemyWaveSpawner::EvaluateWaveCompletion()
 {
-	if (bWaveCompleted)
+	if (bResettingWave || !bWaveActive || bWaveCompleted)
 	{
 		return;
 	}
@@ -199,8 +292,13 @@ bool AEnemyWaveSpawner::CanSpawnMore() const
 
 void AEnemyWaveSpawner::HandleEnemyDestroyed(AActor* DestroyedActor)
 {
+	if (bResettingWave)
+	{
+		return;
+	}
 	RemoveAliveEnemy(Cast<AEnemyMaid>(DestroyedActor));
 	CleanupAliveEnemies();
+	BroadcastWaveProgress();
 	EvaluateWaveCompletion();
 	// We count enemies as "gone" only when they are actually destroyed/despawned
 	// (e.g., after death lifespan), so wave completion waits for visual cleanup

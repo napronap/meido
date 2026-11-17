@@ -3,10 +3,15 @@
 #include "GameModes/MeidoDemoGameMode.h"
 
 #include "ActorComponents/HealthComponent.h"
+#include "ActorComponents/MeiDouComponent.h"
 #include "Characters/DemoPlayerMaidCharacter.h"
 #include "Characters/EnemyMaid.h"
 #include "Characters/MaidCharacter.h"
 #include "EngineUtils.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "GameModes/MeidoDemoSessionSubsystem.h"
+#include "IA/CombatDirectorSubsystem.h"
 #include "IA/EnemyMaidAIController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -16,6 +21,23 @@
 AMeidoDemoGameMode::AMeidoDemoGameMode()
 {
 	PlayerControllerClass = ADemoMaidPlayerController::StaticClass();
+	WaveSpawnerClass = AEnemyWaveSpawner::StaticClass();
+	FMeidoTutorialSlide MovementSlide;
+	MovementSlide.Title = NSLOCTEXT("MeidoDemo", "MovementTitle", "Move and fight");
+	MovementSlide.Body = NSLOCTEXT("MeidoDemo", "MovementBody", "Move, look, dodge and attack. Press attack again during the combo window to continue the chain.");
+	TutorialSlides.Add(MovementSlide);
+	FMeidoTutorialSlide LockSlide;
+	LockSlide.Title = NSLOCTEXT("MeidoDemo", "LockTitle", "Lock on");
+	LockSlide.Body = NSLOCTEXT("MeidoDemo", "LockBody", "Lock onto an enemy to keep it in view. Switch targets or release the lock to move freely.");
+	TutorialSlides.Add(LockSlide);
+	FMeidoTutorialSlide PoseSlide;
+	PoseSlide.Title = NSLOCTEXT("MeidoDemo", "PoseTitle", "MeiDou");
+	PoseSlide.Body = NSLOCTEXT("MeidoDemo", "PoseBody", "Combine three poses: Moe, Kyun and Nyan. Moe-Moe-Kyun creates omurice; Moe-Kyun-Nyan fires a beam. An invalid recipe fails. Watch the pose queue.");
+	TutorialSlides.Add(PoseSlide);
+	FMeidoTutorialSlide ObjectiveSlide;
+	ObjectiveSlide.Title = NSLOCTEXT("MeidoDemo", "ObjectiveTitle", "Clear the arena");
+	ObjectiveSlide.Body = NSLOCTEXT("MeidoDemo", "ObjectiveBody", "Defeat all seven enemies. Watch your health. You can pause, resume or restart the run at any time during the fight.");
+	TutorialSlides.Add(ObjectiveSlide);
 	// DefaultPawnClass: set on BP GameMode or World Settings (DemoPlayer BP).
 }
 
@@ -29,24 +51,106 @@ void AMeidoDemoGameMode::BeginPlay()
 
 void AMeidoDemoGameMode::BindFlowSources()
 {
-	if (bAutoFindWaveSpawner && !BoundWaveSpawner)
+	EnsureSpawner();
+	NotifyPlayerPawnReady(GetPlayerPawn());
+}
+
+bool AMeidoDemoGameMode::EnsureSpawner()
+{
+	UWorld* DemoWorld = GetWorld();
+	if (!DemoWorld)
 	{
-		for (TActorIterator<AEnemyWaveSpawner> It(GetWorld()); It; ++It)
+		return false;
+	}
+	if (IsValid(BoundWaveSpawner) && bWaveConfigured)
+	{
+		return true;
+	}
+	if (bAutoFindWaveSpawner && !IsValid(BoundWaveSpawner))
+	{
+		for (TActorIterator<AEnemyWaveSpawner> It(DemoWorld); It; ++It)
 		{
 			BoundWaveSpawner = *It;
 			break;
 		}
 	}
-
-	if (BoundWaveSpawner)
+	if (!IsValid(BoundWaveSpawner))
 	{
+		FTransform ResolvedSpawnTransform = WaveSpawnTransform;
+		if (!WaveSpawnPointTag.IsNone())
+		{
+			for (TActorIterator<AActor> AnchorIt(DemoWorld); AnchorIt; ++AnchorIt)
+			{
+				if (AnchorIt->ActorHasTag(WaveSpawnPointTag))
+				{
+					ResolvedSpawnTransform = AnchorIt->GetActorTransform();
+					break;
+				}
+			}
+		}
+		const TSubclassOf<AEnemyWaveSpawner> ResolvedSpawnerClass = WaveSpawnerClass
+			? WaveSpawnerClass : TSubclassOf<AEnemyWaveSpawner>(AEnemyWaveSpawner::StaticClass());
+		BoundWaveSpawner = DemoWorld->SpawnActorDeferred<AEnemyWaveSpawner>(
+			ResolvedSpawnerClass, ResolvedSpawnTransform, this, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (BoundWaveSpawner)
+		{
+			BoundWaveSpawner->ConfigureForDemo(WaveConfig);
+			UGameplayStatics::FinishSpawningActor(BoundWaveSpawner, ResolvedSpawnTransform);
+		}
+	}
+	if (IsValid(BoundWaveSpawner))
+	{
+		bWaveConfigured = BoundWaveSpawner->ConfigureForDemo(WaveConfig);
 		BoundWaveSpawner->OnEnemySpawned.RemoveDynamic(this, &AMeidoDemoGameMode::HandleEnemySpawned);
 		BoundWaveSpawner->OnEnemySpawned.AddDynamic(this, &AMeidoDemoGameMode::HandleEnemySpawned);
 		BoundWaveSpawner->OnWaveCompleted.RemoveDynamic(this, &AMeidoDemoGameMode::HandleWaveCompleted);
 		BoundWaveSpawner->OnWaveCompleted.AddDynamic(this, &AMeidoDemoGameMode::HandleWaveCompleted);
+		BoundWaveSpawner->OnWaveProgressChanged.RemoveDynamic(this, &AMeidoDemoGameMode::HandleWaveProgressChanged);
+		BoundWaveSpawner->OnWaveProgressChanged.AddDynamic(this, &AMeidoDemoGameMode::HandleWaveProgressChanged);
+		HandleWaveProgressChanged(GetRemainingEnemies(), GetTotalEnemies());
 	}
+	if (UCombatDirectorSubsystem* DemoDirector = DemoWorld->GetSubsystem<UCombatDirectorSubsystem>())
+	{
+		DemoDirector->SetMaxSimultaneousAttackers(MaxSimultaneousDemoAttackers);
+	}
+	if (!bWaveConfigured)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Demo setup incomplete: assign WaveConfig.EnemyClass on the Demo GameMode and check WaveSpawnerClass."));
+	}
+	return bWaveConfigured;
+}
 
-	BindPlayerHealthFromPawn(GetPlayerPawn());
+void AMeidoDemoGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	bResettingRun = true;
+	if (IsValid(BoundWaveSpawner))
+	{
+		BoundWaveSpawner->StopWave();
+		BoundWaveSpawner->OnEnemySpawned.RemoveDynamic(this, &AMeidoDemoGameMode::HandleEnemySpawned);
+		BoundWaveSpawner->OnWaveCompleted.RemoveDynamic(this, &AMeidoDemoGameMode::HandleWaveCompleted);
+		BoundWaveSpawner->OnWaveProgressChanged.RemoveDynamic(this, &AMeidoDemoGameMode::HandleWaveProgressChanged);
+	}
+	BindPlayerHealthFromPawn(nullptr);
+	Super::EndPlay(EndPlayReason);
+}
+
+int32 AMeidoDemoGameMode::GetRemainingEnemies() const
+{
+	return IsValid(BoundWaveSpawner) ? BoundWaveSpawner->GetRemainingEnemyCount() : FMath::Max(1, WaveConfig.TotalEnemies);
+}
+
+int32 AMeidoDemoGameMode::GetTotalEnemies() const
+{
+	return IsValid(BoundWaveSpawner) ? BoundWaveSpawner->GetTotalEnemyCount() : FMath::Max(1, WaveConfig.TotalEnemies);
+}
+
+void AMeidoDemoGameMode::HandleWaveProgressChanged(const int32 InRemainingEnemies, const int32 InTotalEnemies)
+{
+	if (!bResettingRun)
+	{
+		OnWaveProgressChanged.Broadcast(InRemainingEnemies, InTotalEnemies);
+	}
 }
 
 void AMeidoDemoGameMode::BindPlayerHealthFromPawn(APawn* Pawn)
@@ -91,12 +195,13 @@ AMaidCharacter* AMeidoDemoGameMode::GetPlayerMaid() const
 
 void AMeidoDemoGameMode::SetFlowState(const EFlowState NewState)
 {
-	if (FlowState == NewState)
+	if (FlowState == NewState && bFlowPresentationInitialized)
 	{
 		return;
 	}
 
 	FlowState = NewState;
+	bFlowPresentationInitialized = true;
 	OnFlowStateChanged.Broadcast(FlowState);
 
 	if (ADemoMaidPlayerController* PC = GetDemoPC())
@@ -115,6 +220,11 @@ void AMeidoDemoGameMode::EnterMainMenu()
 
 void AMeidoDemoGameMode::EnterPlaying()
 {
+	if (!EnsureSpawner())
+	{
+		EnterMainMenu();
+		return;
+	}
 	bWaitingForWinSequence = false;
 	bWaitingForLoseSequence = false;
 	bWaitingForMenuCameraTransition = false;
@@ -122,6 +232,11 @@ void AMeidoDemoGameMode::EnterPlaying()
 
 	// Re-bind health after restart (pawn may have been reset).
 	BindPlayerHealthFromPawn(GetPlayerPawn());
+	if (!bRunHasStarted)
+	{
+		bRunHasStarted = true;
+		BoundWaveSpawner->StartWave();
+	}
 
 	if (BoundWaveSpawner && BoundWaveSpawner->IsWaveCompleted())
 	{
@@ -158,23 +273,28 @@ void AMeidoDemoGameMode::EnterLose()
 
 void AMeidoDemoGameMode::PrepareRestartFromResult()
 {
+	bResettingRun = true;
+	bRunHasStarted = false;
 	if (ADemoMaidPlayerController* PC = GetDemoPC())
 	{
 		PC->PrepareLocalRestartPresentation();
 	}
 
 	UGameplayStatics::SetGlobalTimeDilation(this, 1.0f);
+	if (IsValid(BoundWaveSpawner))
+	{
+		BoundWaveSpawner->ResetWave();
+	}
 
 	if (AMaidCharacter* Maid = GetPlayerMaid())
 	{
 		Maid->CustomTimeDilation = 1.0f;
 		Maid->ResetForFlowRestart();
-	}
-
-	if (BoundWaveSpawner)
-	{
-		BoundWaveSpawner->ResetWave();
-		BoundWaveSpawner->StartWave();
+		Maid->ConsumeMovementInputVector();
+		if (RestartPawn.Get() == Maid)
+		{
+			Maid->SetActorTransform(RestartPawnTransform, false, nullptr, ETeleportType::TeleportPhysics);
+		}
 	}
 
 	// Flow state MainMenu so camera path / CompleteStart can run.
@@ -188,41 +308,45 @@ void AMeidoDemoGameMode::PrepareRestartFromResult()
 	{
 		PC->ApplyRestartInterimPresentation();
 	}
+	bResettingRun = false;
+	HandleWaveProgressChanged(GetRemainingEnemies(), GetTotalEnemies());
 }
 
 void AMeidoDemoGameMode::RequestStartFromMenu()
 {
-	const bool bRestartingFromResult =
-		FlowState == EFlowState::Win || FlowState == EFlowState::Lose;
-
-	const bool bCanStart = FlowState == EFlowState::MainMenu
-		|| FlowState == EFlowState::Win
-		|| FlowState == EFlowState::Lose;
-	if (!bCanStart)
+	if (FlowState == EFlowState::Win || FlowState == EFlowState::Lose)
+	{
+		RequestRestartRun();
+		return;
+	}
+	if (bResettingRun || FlowState != EFlowState::MainMenu || bWaitingForMenuCameraTransition || !GetPlayerMaid() || !EnsureSpawner())
 	{
 		return;
 	}
-
-	if (bWaitingForMenuCameraTransition)
+	if (ShouldShowTutorial())
 	{
+		TutorialSlideIndex = 0;
+		SetFlowState(EFlowState::Tutorial);
+		OnTutorialSlideChanged.Broadcast(TutorialSlideIndex, TutorialSlides.Num());
 		return;
 	}
+	BeginGameplayTransition();
+}
 
-	if (bRestartingFromResult)
+void AMeidoDemoGameMode::BeginGameplayTransition()
+{
+	// Set before calling the legacy camera; it may finish synchronously.
+	bWaitingForMenuCameraTransition = true;
+	if (ADemoMaidPlayerController* PC = GetDemoPC())
 	{
-		PrepareRestartFromResult();
+		PC->PrepareLocalRestartPresentation();
+		PC->ApplyRestartInterimPresentation();
 	}
-
 	if (ADemoPlayerMaidCharacter* DemoPlayer = Cast<ADemoPlayerMaidCharacter>(GetPlayerPawn()))
 	{
-		if (!bRestartingFromResult)
-		{
-			DemoPlayer->ApplyMenuCameraPose();
-		}
 		DemoPlayer->StartMenuCameraTransitionToGameplay();
 		if (DemoPlayer->IsMenuCameraTransitionActive())
 		{
-			bWaitingForMenuCameraTransition = true;
 			return;
 		}
 	}
@@ -232,7 +356,7 @@ void AMeidoDemoGameMode::RequestStartFromMenu()
 
 void AMeidoDemoGameMode::NotifyMenuCameraFinished()
 {
-	if (FlowState != EFlowState::MainMenu)
+	if (!bWaitingForMenuCameraTransition || (FlowState != EFlowState::MainMenu && FlowState != EFlowState::Tutorial))
 	{
 		return;
 	}
@@ -244,6 +368,11 @@ void AMeidoDemoGameMode::NotifyMenuCameraFinished()
 void AMeidoDemoGameMode::NotifyPlayerPawnReady(APawn* Pawn)
 {
 	BindPlayerHealthFromPawn(Pawn);
+	if (Pawn && RestartPawn.Get() != Pawn)
+	{
+		RestartPawn = Pawn;
+		RestartPawnTransform = Pawn->GetActorTransform();
+	}
 }
 
 void AMeidoDemoGameMode::NotifyWinCameraFinished()
@@ -304,7 +433,7 @@ void AMeidoDemoGameMode::RequestTogglePause()
 
 void AMeidoDemoGameMode::RequestResumeFromPause()
 {
-	if (FlowState != EFlowState::Paused)
+	if (FlowState != EFlowState::Paused || bWaitingForWinSequence || bWaitingForLoseSequence || bResettingRun)
 	{
 		return;
 	}
@@ -323,7 +452,84 @@ void AMeidoDemoGameMode::RequestQuit()
 
 void AMeidoDemoGameMode::RequestRestartRun()
 {
-	RequestStartFromMenu();
+	if (bResettingRun || bWaitingForMenuCameraTransition || bWaitingForWinSequence || bWaitingForLoseSequence)
+	{
+		return;
+	}
+	if (FlowState != EFlowState::Paused && FlowState != EFlowState::Win && FlowState != EFlowState::Lose)
+	{
+		return;
+	}
+	if (!EnsureSpawner())
+	{
+		return;
+	}
+	PrepareRestartFromResult();
+	BeginGameplayTransition();
+}
+
+bool AMeidoDemoGameMode::ShouldShowTutorial() const
+{
+	if (!bShowTutorialOnFirstRun || TutorialSlides.IsEmpty())
+	{
+		return false;
+	}
+	const UGameInstance* DemoInstance = GetGameInstance();
+	const UMeidoDemoSessionSubsystem* DemoSession = DemoInstance
+		? DemoInstance->GetSubsystem<UMeidoDemoSessionSubsystem>() : nullptr;
+	if (DemoSession && DemoSession->HasCompletedTutorial())
+	{
+		return false;
+	}
+	const ADemoMaidPlayerController* TutorialPC = GetDemoPC();
+	if (!TutorialPC || !TutorialPC->CanPresentTutorial())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Demo tutorial skipped: assign TutorialWidgetClass on the demo controller."));
+		return false;
+	}
+	return true;
+}
+
+bool AMeidoDemoGameMode::GetCurrentTutorialSlide(FMeidoTutorialSlide& OutSlide) const
+{
+	if (FlowState != EFlowState::Tutorial || !TutorialSlides.IsValidIndex(TutorialSlideIndex))
+	{
+		OutSlide = FMeidoTutorialSlide();
+		return false;
+	}
+	OutSlide = TutorialSlides[TutorialSlideIndex];
+	return true;
+}
+
+void AMeidoDemoGameMode::RequestNextTutorialSlide()
+{
+	if (FlowState != EFlowState::Tutorial || bWaitingForMenuCameraTransition)
+	{
+		return;
+	}
+	if (TutorialSlides.IsValidIndex(TutorialSlideIndex + 1))
+	{
+		++TutorialSlideIndex;
+		OnTutorialSlideChanged.Broadcast(TutorialSlideIndex, TutorialSlides.Num());
+		return;
+	}
+	if (UGameInstance* DemoInstance = GetGameInstance())
+	{
+		if (UMeidoDemoSessionSubsystem* DemoSession = DemoInstance->GetSubsystem<UMeidoDemoSessionSubsystem>())
+		{
+			DemoSession->MarkTutorialCompleted();
+		}
+	}
+	BeginGameplayTransition();
+}
+
+void AMeidoDemoGameMode::RequestPreviousTutorialSlide()
+{
+	if (FlowState == EFlowState::Tutorial && !bWaitingForMenuCameraTransition && TutorialSlideIndex > 0)
+	{
+		--TutorialSlideIndex;
+		OnTutorialSlideChanged.Broadcast(TutorialSlideIndex, TutorialSlides.Num());
+	}
 }
 
 void AMeidoDemoGameMode::StartWinSequence()
@@ -338,7 +544,7 @@ void AMeidoDemoGameMode::StartWinSequence()
 		return;
 	}
 
-	bWaitingForWinSequence = false;
+	bWaitingForWinSequence = true;
 	bWaitingForLoseSequence = false;
 	UGameplayStatics::SetGlobalTimeDilation(this, 1.0f);
 	if (AMaidCharacter* Maid = GetPlayerMaid())
@@ -377,7 +583,7 @@ void AMeidoDemoGameMode::StartLoseSequence()
 	}
 
 	bWaitingForWinSequence = false;
-	bWaitingForLoseSequence = false;
+	bWaitingForLoseSequence = true;
 
 	if (ADemoMaidPlayerController* PC = GetDemoPC())
 	{
@@ -430,7 +636,7 @@ void AMeidoDemoGameMode::ClearEnemiesAfterLose()
 
 void AMeidoDemoGameMode::HandleWaveCompleted()
 {
-	if (bWaitingForLoseSequence || FlowState == EFlowState::Lose)
+	if (bResettingRun || bWaitingForLoseSequence || FlowState == EFlowState::Lose)
 	{
 		return;
 	}
@@ -466,7 +672,7 @@ void AMeidoDemoGameMode::HandlePlayerHealthDepleted(
 	AActor* /*DamageCauser*/
 )
 {
-	if (bWaitingForLoseSequence || FlowState == EFlowState::Lose)
+	if (bResettingRun || bWaitingForLoseSequence || FlowState == EFlowState::Lose)
 	{
 		return;
 	}

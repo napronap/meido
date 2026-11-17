@@ -12,6 +12,8 @@ class UProgressBar;
 class UTextBlock;
 class UHealthComponent;
 class UMeiDouComponent;
+class AMeidoDemoGameMode;
+class APawn;
 
 /**
  * Gameplay HUD root (screen-space). Logic here; WBP = presentation.
@@ -27,6 +29,15 @@ class MEIDO_5_6_API UMeidoHUD : public UUserWidget
 	GENERATED_BODY()
 
 public:
+	/** Shared mount API for demo/playground controllers. */
+	void BindToPawn(APawn* InHUDPawn);
+	void BindToDemoFlow(AMeidoDemoGameMode* InDemoFlow);
+	void UnbindDemoFlow();
+
+	UFUNCTION(BlueprintNativeEvent, Category = "HUD|Wave")
+	void OnEnemyCountUpdated(int32 InRemainingEnemies, int32 InTotalEnemies);
+	virtual void OnEnemyCountUpdated_Implementation(int32 InRemainingEnemies, int32 InTotalEnemies);
+
 	UFUNCTION(BlueprintCallable, Category = "HUD|Health")
 	void BindToHealth(UHealthComponent* Health);
 
@@ -61,6 +72,17 @@ public:
 	);
 
 protected:
+	virtual void NativeDestruct() override;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> EnemyCountText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AMeidoDemoGameMode> BoundDemoFlow;
+
+	UFUNCTION()
+	void HandleEnemyCountChanged(int32 InRemainingEnemies, int32 InTotalEnemies);
+
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
 	TObjectPtr<UProgressBar> HealthBar;
 

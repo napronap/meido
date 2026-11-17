@@ -28,6 +28,16 @@ UBTTask_ReleaseAttackSlot::UBTTask_ReleaseAttackSlot()
 {
 	NodeName = TEXT("Release Attack Slot");
 	bNotifyTick = true;
+	bNotifyTaskFinished = true;
+}
+
+void UBTTask_ReleaseAttackSlot::OnTaskFinished(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, EBTNodeResult::Type TaskResult)
+{
+	if (AEnemyMaidAIController* TaskController = Cast<AEnemyMaidAIController>(OwnerComp.GetAIOwner()))
+	{
+		TaskController->ReleaseAttackSlotForControlledPawn();
+	}
+	Super::OnTaskFinished(OwnerComp, NodeMemory, TaskResult);
 }
 
 EBTNodeResult::Type UBTTask_ReleaseAttackSlot::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)

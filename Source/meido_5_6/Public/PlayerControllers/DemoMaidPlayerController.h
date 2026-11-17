@@ -13,10 +13,32 @@ class UInputAction;
 class UUserWidget;
 class AEnemyMaid;
 class AMeidoDemoGameMode;
+class UMeidoTutorialWidget;
+class UMeidoHUD;
+class UDemoFlowAudioData;
+class USoundBase;
+
+/** Which menu list is active for pad nav (CP4.2). */
+UENUM(BlueprintType)
+enum class EDemoMenuKind : uint8
+{
+	None UMETA(DisplayName = "None"),
+	MainMenu UMETA(DisplayName = "MainMenu"),
+	Pause UMETA(DisplayName = "Pause"),
+	Win UMETA(DisplayName = "Win"),
+	Lose UMETA(DisplayName = "Lose"),
+	Tutorial UMETA(DisplayName = "Tutorial"),
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FOnDemoMenuSelectionChanged,
+	EDemoMenuKind, MenuKind,
+	int32, SelectedIndex
+);
 
 /**
- * Demo PC (CP4.1): local presentation + input.
- * Flow state machine lives on AMeidoDemoGameMode — this class applies widgets / input mode / AI flags.
+ * Demo PC: presentation + IMC swap + simple menu index nav (CP4.1–4.2).
+ * Flow rules: AMeidoDemoGameMode.
  */
 UCLASS()
 class MEIDO_5_6_API ADemoMaidPlayerController : public APlayerController
@@ -24,11 +46,33 @@ class MEIDO_5_6_API ADemoMaidPlayerController : public APlayerController
 	GENERATED_BODY()
 
 protected:
-	UPROPERTY(EditAnywhere, Category = Input)
-	UInputMappingContext* DefaultIMC;
+	/** Playing: move, look, combat, pause. */
+	UPROPERTY(EditAnywhere, Category = "Input|IMC")
+	TObjectPtr<UInputMappingContext> GameplayIMC;
 
-	UPROPERTY(EditAnywhere, Category = Input)
-	UInputAction* PauseInputAction;
+	/** Legacy name alias — if set and GameplayIMC null, used as gameplay. */
+	UPROPERTY(EditAnywhere, Category = "Input|IMC")
+	TObjectPtr<UInputMappingContext> DefaultIMC;
+
+	/** Menu/Pause/Win/Lose: NavigateUp/Down, Confirm, Cancel. */
+	UPROPERTY(EditAnywhere, Category = "Input|IMC")
+	TObjectPtr<UInputMappingContext> MenuIMC;
+
+	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	TObjectPtr<UInputAction> PauseInputAction;
+
+	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	TObjectPtr<UInputAction> MenuNavigateUpAction;
+
+	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	TObjectPtr<UInputAction> MenuNavigateDownAction;
+
+	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	TObjectPtr<UInputAction> MenuConfirmAction;
+
+	/** Pause: resume. Other menus: ignored for now. */
+	UPROPERTY(EditAnywhere, Category = "Input|Actions")
+	TObjectPtr<UInputAction> MenuCancelAction;
 
 	UPROPERTY(EditAnywhere, Category = "UI")
 	TSubclassOf<UUserWidget> MainMenuWidgetClass;
@@ -42,12 +86,39 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "UI")
 	TSubclassOf<UUserWidget> LoseWidgetClass;
 
+	UPROPERTY(EditAnywhere, Category = "UI")
+	TSubclassOf<UMeidoTutorialWidget> TutorialWidgetClass;
+
+	UPROPERTY(EditAnywhere, Category = "UI|HUD")
+	TSubclassOf<UMeidoHUD> GameplayHUDClass;
+
+	UPROPERTY(EditAnywhere, Category = "UI|Audio")
+	TObjectPtr<UDemoFlowAudioData> FlowAudio;
+
+	UPROPERTY(EditAnywhere, Category = "UI|Transition", meta = (ClampMin = "0.0"))
+	float RetryFadeDuration = 0.2f;
+
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 	virtual void OnPossess(APawn* InPawn) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void OnUnPossess() override;
 
 public:
-	// --- BP / widgets: forward to GameMode ---
+	bool CanPresentTutorial() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Flow|Tutorial")
+	void AdvanceTutorial();
+
+	UFUNCTION(BlueprintCallable, Category = "Flow|Tutorial")
+	void PreviousTutorialSlide();
+
+	/** Mouse hover/click use the same selection and actions as the gamepad. */
+	UFUNCTION(BlueprintCallable, Category = "Flow|Menu")
+	void SelectMenuEntry(int32 InMenuIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Flow|Menu")
+	void ActivateMenuEntry(int32 InMenuIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Flow")
 	void StartGameFromMenu();
@@ -76,11 +147,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Flow")
 	EFlowState GetFlowState() const;
 
-	/** Still broadcast for existing BP listeners; mirrors GM. */
 	UPROPERTY(BlueprintAssignable, Category = "Flow")
 	FOnFlowStateChanged OnFlowStateChanged;
 
-	// --- Called by AMeidoDemoGameMode ---
+	/** WBP highlight: which row is selected (0-based). */
+	UPROPERTY(BlueprintAssignable, Category = "Flow|Menu")
+	FOnDemoMenuSelectionChanged OnMenuSelectionChanged;
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Menu")
+	EDemoMenuKind GetActiveMenuKind() const { return ActiveMenuKind; }
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Menu")
+	int32 GetMenuSelectedIndex() const { return MenuSelectedIndex; }
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Menu")
+	int32 GetMenuOptionCount() const;
 
 	void ApplyFlowPresentation(EFlowState NewState);
 	void PrepareLocalRestartPresentation();
@@ -92,6 +173,19 @@ public:
 	void SetEnemyAIEnabledPublic(AEnemyMaid* Enemy, bool bEnabled);
 
 private:
+	UPROPERTY(Transient)
+	TObjectPtr<UMeidoTutorialWidget> TutorialWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMeidoHUD> GameplayHUD;
+
+	bool bHasPresentedFlow = false;
+	EFlowState LastPresentedFlow = EFlowState::MainMenu;
+
+	bool CanAcceptMenuInput() const;
+	void ShowTutorialUI();
+	void SetGameplayHUDVisible(bool bInVisible);
+	void PlayFlowSound(USoundBase* InFlowSound) const;
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> MainMenuWidget = nullptr;
 
@@ -106,7 +200,14 @@ private:
 
 	bool bDebugDisableEnemyAI = false;
 
+	EDemoMenuKind ActiveMenuKind = EDemoMenuKind::None;
+	int32 MenuSelectedIndex = 0;
+
 	void OnPauseInput(const FInputActionValue& Value);
+	void OnMenuNavigateUp(const FInputActionValue& Value);
+	void OnMenuNavigateDown(const FInputActionValue& Value);
+	void OnMenuConfirm(const FInputActionValue& Value);
+	void OnMenuCancel(const FInputActionValue& Value);
 	void OnDebugToggleEnemyAI();
 
 	void ShowMainMenuUI();
@@ -114,6 +215,13 @@ private:
 	void ShowPausedUI();
 	void ShowWinUI();
 	void ShowLoseUI();
+
+	void ApplyInputMappingForFlow(EFlowState State);
+	UInputMappingContext* ResolveGameplayIMC() const;
+	void SetMenuContext(EDemoMenuKind Kind);
+	void MoveMenuSelection(int32 Delta);
+	void ConfirmMenuSelection();
+	void BroadcastMenuSelection();
 
 	UUserWidget* EnsureWidget(TObjectPtr<UUserWidget>& WidgetInstance, TSubclassOf<UUserWidget> WidgetClass);
 	void SetGameplayInputEnabled(bool bEnabled);

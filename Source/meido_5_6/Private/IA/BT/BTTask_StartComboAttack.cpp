@@ -44,7 +44,10 @@ EBTNodeResult::Type UBTTask_StartComboAttack::ExecuteTask(UBehaviorTreeComponent
 	Maid->DoStartComboAttack();
 	const bool bNowAttacking = IsInActiveComboAttack(Maid->GetCharacterStateComponent());
 
-	return (bNowAttacking || bWasAttacking)
-		? EBTNodeResult::Succeeded
-		: EBTNodeResult::Failed;
+	if (bNowAttacking || bWasAttacking)
+	{
+		return EBTNodeResult::Succeeded;
+	}
+	AIController->ReleaseAttackSlotForControlledPawn();
+	return EBTNodeResult::Failed;
 }

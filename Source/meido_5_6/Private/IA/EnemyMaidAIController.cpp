@@ -6,6 +6,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "IA/CombatDirectorSubsystem.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/World.h"
+#include "ActorComponents/CharacterStateComponent.h"
 
 AEnemyMaidAIController::AEnemyMaidAIController()
 {
@@ -21,6 +23,14 @@ void AEnemyMaidAIController::BeginPlay()
 void AEnemyMaidAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+	const float SafeRadiusMin = FMath::Max(0.f, FMath::Min(PreferredHoldRadiusMin, PreferredHoldRadiusMax));
+	const float SafeRadiusMax = FMath::Max(SafeRadiusMin, FMath::Max(PreferredHoldRadiusMin, PreferredHoldRadiusMax));
+	PreferredHoldRadius = FMath::FRandRange(SafeRadiusMin, SafeRadiusMax);
+	HoldOrbitDirection = FMath::RandBool() ? 1.f : -1.f;
+	if (UCombatDirectorSubsystem* HoldDirector = GetWorld() ? GetWorld()->GetSubsystem<UCombatDirectorSubsystem>() : nullptr)
+	{
+		PreferredHoldAngle = HoldDirector->RegisterHoldAngle(InPawn) + FMath::FRandRange(-12.f, 12.f);
+	}
 
 	if (AMaidCharacter* ControlledMaid = Cast<AMaidCharacter>(InPawn))
 	{
@@ -46,7 +56,21 @@ void AEnemyMaidAIController::OnUnPossess()
 {
 	ClearFocus(EAIFocusPriority::Gameplay);
 	ReleaseAttackSlot();
+	if (UCombatDirectorSubsystem* HoldDirector = GetWorld() ? GetWorld()->GetSubsystem<UCombatDirectorSubsystem>() : nullptr)
+	{
+		HoldDirector->UnregisterHoldAngle(GetPawn());
+	}
 	Super::OnUnPossess();
+}
+
+void AEnemyMaidAIController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ReleaseAttackSlot();
+	if (UCombatDirectorSubsystem* HoldDirector = GetWorld() ? GetWorld()->GetSubsystem<UCombatDirectorSubsystem>() : nullptr)
+	{
+		HoldDirector->UnregisterHoldAngle(GetPawn());
+	}
+	Super::EndPlay(EndPlayReason);
 }
 
 void AEnemyMaidAIController::Tick(float DeltaSeconds)
@@ -56,6 +80,14 @@ void AEnemyMaidAIController::Tick(float DeltaSeconds)
 	if (!bAIEnabled)
 	{
 		return;
+	}
+	if (const AMaidCharacter* TickMaid = Cast<AMaidCharacter>(GetPawn()))
+	{
+		if (TickMaid->IsDead())
+		{
+			SetAIEnabled(false);
+			return;
+		}
 	}
 
 	if (!GetPawn())
@@ -114,6 +146,14 @@ bool AEnemyMaidAIController::RequestAttackSlotForControlledPawn()
 	{
 		return false;
 	}
+	if (const AMaidCharacter* RequestingMaid = Cast<AMaidCharacter>(ControlledPawn))
+	{
+		const UCharacterStateComponent* RequestState = RequestingMaid->GetCharacterStateComponent();
+		if (RequestingMaid->IsDead() || (RequestState && (RequestState->IsStaggered() || RequestState->IsMeiDouLocked())))
+		{
+			return false;
+		}
+	}
 
 	if (AttackSlotRequestMaxDistance > 0.f)
 	{
@@ -124,8 +164,8 @@ bool AEnemyMaidAIController::RequestAttackSlotForControlledPawn()
 		}
 	}
 
-	UCombatDirectorSubsystem* CombatDirector = GetGameInstance()
-		? GetGameInstance()->GetSubsystem<UCombatDirectorSubsystem>()
+	UCombatDirectorSubsystem* CombatDirector = GetWorld()
+		? GetWorld()->GetSubsystem<UCombatDirectorSubsystem>()
 		: nullptr;
 	if (!CombatDirector)
 	{
@@ -144,12 +184,20 @@ void AEnemyMaidAIController::ReleaseAttackSlotForControlledPawn()
 
 bool AEnemyMaidAIController::HasAttackSlotForControlledPawn() const
 {
-	return bHasAttackSlot;
+	const UCombatDirectorSubsystem* QueryDirector = GetWorld() ? GetWorld()->GetSubsystem<UCombatDirectorSubsystem>() : nullptr;
+	return QueryDirector && QueryDirector->HasAttackSlot(GetPawn());
 }
 
 void AEnemyMaidAIController::UpdateTarget()
 {
 	CurrentTargetPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (const AMaidCharacter* TargetMaid = Cast<AMaidCharacter>(CurrentTargetPawn.Get()))
+	{
+		if (TargetMaid->IsDead())
+		{
+			CurrentTargetPawn.Reset();
+		}
+	}
 }
 
 void AEnemyMaidAIController::SetAIEnabled(const bool bEnabled)
@@ -202,8 +250,8 @@ void AEnemyMaidAIController::ReleaseAttackSlot()
 	}
 
 	APawn* ControlledPawn = GetPawn();
-	UCombatDirectorSubsystem* CombatDirector = GetGameInstance()
-		? GetGameInstance()->GetSubsystem<UCombatDirectorSubsystem>()
+	UCombatDirectorSubsystem* CombatDirector = GetWorld()
+		? GetWorld()->GetSubsystem<UCombatDirectorSubsystem>()
 		: nullptr;
 
 	if (CombatDirector && ControlledPawn)

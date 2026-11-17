@@ -6,6 +6,60 @@
 #include "ActorComponents/MeiDouComponent.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
+#include "GameFramework/Pawn.h"
+#include "GameModes/MeidoDemoGameMode.h"
+
+void UMeidoHUD::BindToPawn(APawn* InHUDPawn)
+{
+	BindToHealth(InHUDPawn ? InHUDPawn->FindComponentByClass<UHealthComponent>() : nullptr);
+	BindToMeiDou(InHUDPawn ? InHUDPawn->FindComponentByClass<UMeiDouComponent>() : nullptr);
+}
+
+void UMeidoHUD::BindToDemoFlow(AMeidoDemoGameMode* InDemoFlow)
+{
+	UnbindDemoFlow();
+	BoundDemoFlow = InDemoFlow;
+	if (BoundDemoFlow)
+	{
+		BoundDemoFlow->OnWaveProgressChanged.AddUniqueDynamic(this, &UMeidoHUD::HandleEnemyCountChanged);
+		HandleEnemyCountChanged(BoundDemoFlow->GetRemainingEnemies(), BoundDemoFlow->GetTotalEnemies());
+	}
+	if (EnemyCountText)
+	{
+		EnemyCountText->SetVisibility(BoundDemoFlow ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+	}
+}
+
+void UMeidoHUD::UnbindDemoFlow()
+{
+	if (IsValid(BoundDemoFlow))
+	{
+		BoundDemoFlow->OnWaveProgressChanged.RemoveDynamic(this, &UMeidoHUD::HandleEnemyCountChanged);
+	}
+	BoundDemoFlow = nullptr;
+}
+
+void UMeidoHUD::HandleEnemyCountChanged(const int32 InRemainingEnemies, const int32 InTotalEnemies)
+{
+	if (EnemyCountText)
+	{
+		EnemyCountText->SetText(FText::Format(NSLOCTEXT("MeidoDemo", "EnemyCount", "Enemies: {0} / {1}"),
+			FText::AsNumber(InRemainingEnemies), FText::AsNumber(InTotalEnemies)));
+	}
+	OnEnemyCountUpdated(InRemainingEnemies, InTotalEnemies);
+}
+
+void UMeidoHUD::OnEnemyCountUpdated_Implementation(int32 InRemainingEnemies, int32 InTotalEnemies)
+{
+}
+
+void UMeidoHUD::NativeDestruct()
+{
+	UnbindHealth();
+	UnbindMeiDou();
+	UnbindDemoFlow();
+	Super::NativeDestruct();
+}
 
 void UMeidoHUD::BindToHealth(UHealthComponent* Health)
 {

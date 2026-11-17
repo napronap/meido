@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "Types/FlowTypes.h"
+#include "Types/DemoContentTypes.h"
 #include "MeidoDemoGameMode.generated.h"
 
 class ADemoMaidPlayerController;
@@ -47,6 +48,33 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Flow")
 	void RequestStartFromMenu();
 
+	UFUNCTION(BlueprintCallable, Category = "Flow|Tutorial")
+	void RequestNextTutorialSlide();
+
+	UFUNCTION(BlueprintCallable, Category = "Flow|Tutorial")
+	void RequestPreviousTutorialSlide();
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Tutorial")
+	bool GetCurrentTutorialSlide(FMeidoTutorialSlide& OutSlide) const;
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Tutorial")
+	int32 GetTutorialSlideIndex() const { return TutorialSlideIndex; }
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Tutorial")
+	int32 GetTutorialSlideCount() const { return TutorialSlides.Num(); }
+
+	UPROPERTY(BlueprintAssignable, Category = "Flow|Tutorial")
+	FOnMeidoTutorialSlideChanged OnTutorialSlideChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Flow|Wave")
+	FOnMeidoWaveProgress OnWaveProgressChanged;
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Wave")
+	int32 GetRemainingEnemies() const;
+
+	UFUNCTION(BlueprintPure, Category = "Flow|Wave")
+	int32 GetTotalEnemies() const;
+
 	/** Demo character camera finished menu → gameplay. */
 	UFUNCTION(BlueprintCallable, Category = "Flow")
 	void NotifyMenuCameraFinished();
@@ -77,6 +105,30 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Flow|Tutorial")
+	bool bShowTutorialOnFirstRun = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Flow|Tutorial")
+	TArray<FMeidoTutorialSlide> TutorialSlides;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Flow|Wave")
+	FMeidoWaveConfig WaveConfig;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Flow|Wave", meta = (ClampMin = "1"))
+	int32 MaxSimultaneousDemoAttackers = 2;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Flow|Spawner")
+	TSubclassOf<AEnemyWaveSpawner> WaveSpawnerClass;
+
+	/** Optional TargetPoint/actor tag used when creating a missing spawner. */
+	UPROPERTY(EditDefaultsOnly, Category = "Flow|Spawner")
+	FName WaveSpawnPointTag = TEXT("DemoEnemySpawn");
+
+	/** Used when neither a placed spawner nor a tagged actor exists. World coordinates. */
+	UPROPERTY(EditDefaultsOnly, Category = "Flow|Spawner")
+	FTransform WaveSpawnTransform = FTransform(FRotator::ZeroRotator, FVector(500.f, 0.f, 100.f));
 
 	/** If true, find first AEnemyWaveSpawner in world on BeginPlay. */
 	UPROPERTY(EditAnywhere, Category = "Flow|Spawner")
@@ -95,6 +147,17 @@ private:
 	bool bWaitingForMenuCameraTransition = false;
 	bool bWaitingForWinSequence = false;
 	bool bWaitingForLoseSequence = false;
+	bool bFlowPresentationInitialized = false;
+	bool bRunHasStarted = false;
+	bool bResettingRun = false;
+	bool bWaveConfigured = false;
+	int32 TutorialSlideIndex = 0;
+	TWeakObjectPtr<APawn> RestartPawn;
+	FTransform RestartPawnTransform = FTransform::Identity;
+
+	bool EnsureSpawner();
+	void BeginGameplayTransition();
+	bool ShouldShowTutorial() const;
 
 	void SetFlowState(EFlowState NewState);
 	void BindFlowSources();
@@ -118,6 +181,9 @@ private:
 
 	UFUNCTION()
 	void HandleEnemySpawned(AEnemyMaid* SpawnedEnemy);
+
+	UFUNCTION()
+	void HandleWaveProgressChanged(int32 InRemainingEnemies, int32 InTotalEnemies);
 
 	UFUNCTION()
 	void HandlePlayerHealthDepleted(UHealthComponent* HealthComponent, AActor* DamageCauser);

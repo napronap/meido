@@ -23,10 +23,7 @@ EBTNodeResult::Type UBTTask_StartComboAttack::ExecuteTask(UBehaviorTreeComponent
 		return EBTNodeResult::Failed;
 	}
 
-	const ECharacterState PreviousState = Maid->GetCharacterState();
 	Maid->DoStartComboAttack();
 
-	return (Maid->GetCharacterState() == ECharacterState::ECS_Attacking || PreviousState == ECharacterState::ECS_Attacking)
-		? EBTNodeResult::Succeeded
-		: EBTNodeResult::Failed;
+	return Maid->IsAttacking() ? EBTNodeResult::Succeeded : EBTNodeResult::Failed;
 }

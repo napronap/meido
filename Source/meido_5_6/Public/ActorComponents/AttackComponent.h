@@ -3,21 +3,26 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Animation/AnimInstance.h"
 #include "Components/ActorComponent.h"
+#include "DataAssets/AttackComboData.h"
 #include "AttackComponent.generated.h"
 
 class ACharacter;
+class UAnimSequenceBase;
 
-UENUM(BlueprintType)
-enum class EHitStopType : uint8
-{
-	Light UMETA(DisplayName = "Light"),
-	Heavy UMETA(DisplayName = "Heavy")
-};
-
-// As it is right now, this AC only works for the maids attacks as it relies on hitboxes mounted on sockets
-// and the hit window anim notify also relies on that.
+// As it is right now, this AC only works for the maids attacks as it relies on hitboxes mounted on sockets (from the DA)
 // could be expanded to take an actor to where to attach the box to I guess
+//
+//     flow of an attack
+//		    Input
+//	 		  ↓
+//   AMaidPlayerController (relay input)
+//		  	  ↓
+//	    AMaidCharacter (checks other components/conditions that are not related to this AC)
+//			  ↓
+//	   UAttackComponent (checks only internal conditions)
+//
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class MEIDO_5_6_API UAttackComponent : public UActorComponent
 {
@@ -25,9 +30,22 @@ class MEIDO_5_6_API UAttackComponent : public UActorComponent
 
 public:
 	UAttackComponent();
+	
+	// starts the combo, or queues the next step while one is playing (ignored while recovering)
+	void RequestAttack();
 
-	// starts tracing from these sockets every frame until CloseHitWindow
-	void OpenHitWindow(const TArray<FName>& Sockets, EHitStopType HitStopType);
+	// true from the first step until the last played step's montage ends (recovery included)
+	bool IsAttacking() const { return CurrentStep != INDEX_NONE; }
+
+	// called by the combo notifies with the montage that fired them
+	void OpenComboHitWindow(const UAnimSequenceBase* Animation);
+	// called by the check combo notify with the montage that fired them
+	void CheckCombo(const UAnimSequenceBase* Animation);
+	// called by the recovery end notify with the montage that fired them
+	void EndRecovery(const UAnimSequenceBase* Animation);
+	
+	// starts tracing every frame until CloseHitWindow
+	void OpenHitWindow(const FAttackHit& Hit);
 	void CloseHitWindow();
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -36,6 +54,12 @@ protected:
 	virtual void BeginPlay() override;
 
 private:
+	void PlayStep(int32 StepIndex);
+	void HandleStepMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	// need to check if the animation requesting anything from this component is the currently playing one
+	// there's .3 s (blend time) in which other animation than the one requesting might be playing
+	bool IsCurrentStep(const UAnimSequenceBase* Animation) const;
+
 	void PerformHitTrace();
 	bool ShouldIgnoreHitActor(const AActor* HitActor) const;
 
@@ -43,13 +67,7 @@ private:
 	TObjectPtr<ACharacter> OwnerCharacter;
 
 	UPROPERTY(EditAnywhere, Category="Attack")
-	float Damage = 20.f;
-
-	// half size of the box swept along each socket's path
-	// box is oriented to the socket
-	// default is a size that makes sense for the maid's hand
-	UPROPERTY(EditAnywhere, Category="Attack")
-	FVector BoxExtent = FVector(7.f, 10.f, 10.f);
+	TObjectPtr<UAttackComboData> ComboData;
 
 	UPROPERTY(EditAnywhere, Category="Attack|HitStop", meta=(ClampMin="0.0", ClampMax="0.2"))
 	float LightHitStopDuration = 0.04f;
@@ -57,10 +75,15 @@ private:
 	UPROPERTY(EditAnywhere, Category="Attack|HitStop", meta=(ClampMin="0.0", ClampMax="0.3"))
 	float HeavyHitStopDuration = 0.08f;
 
-	TArray<FName> CurrentHitSockets;
-	// where each socket was last frame (same index as CurrentHitSockets)
+	// combo
+	int32 CurrentStep = INDEX_NONE;
+	bool bAttackQueued = false;
+	bool bRecovering = false;
+	FOnMontageBlendingOutStarted HandleStepMontageBlendingOut;
+
+	// hit window
+	FAttackHit CurrentHit;
+	// where each socket was last frame (same index as CurrentHit.Sockets)
 	TArray<FVector> PreviousSocketLocations;
-	
-	EHitStopType CurrentHitStopType = EHitStopType::Light;
 	TSet<TWeakObjectPtr<AActor>> HitActorsThisWindow;
 };

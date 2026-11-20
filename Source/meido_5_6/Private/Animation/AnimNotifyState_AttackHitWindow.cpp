@@ -17,7 +17,7 @@ void UAnimNotifyState_AttackHitWindow::NotifyBegin(
 	// need this check for the notify to not crash when it doesn't find the attack component (preview mesh won't have it)
 	if (UAttackComponent* AttackComponent = MeshComp->GetOwner()->FindComponentByClass<UAttackComponent>())
 	{
-		AttackComponent->OpenHitWindow({ HitSocketName }, EHitStopType::Light);
+		AttackComponent->OpenComboHitWindow(Animation);
 	}
 }
 

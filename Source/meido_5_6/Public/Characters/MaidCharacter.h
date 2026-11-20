@@ -5,7 +5,6 @@
 #include "MeiDouPoseDataAsset.h"
 #include "GameFramework/Character.h"
 #include "Types/CharacterTypes.h"
-#include "Interfaces/ComboAttacker.h"
 #include "Types/MeiDouTypes.h"
 #include "MaidCharacter.generated.h"
 
@@ -16,7 +15,7 @@ class UAnimMontage;
 class AController;
 
 UCLASS(Abstract)
-class MEIDO_5_6_API AMaidCharacter : public ACharacter, public IComboAttacker
+class MEIDO_5_6_API AMaidCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
@@ -57,16 +56,6 @@ protected:
 	/*
 	 * Combat
 	 */
-	UPROPERTY(EditAnywhere, Category="Combat|Combo")
-	UAnimMontage* ComboAttackMontage;
-
-	UPROPERTY(EditAnywhere, Category="Combat|Combo")
-	TArray<FName> ComboSectionNames;
-
-	int32 ComboIndex = 0;
-	int32 ComboCount = 0;
-	float CachedAttackInputTime = 0.0f;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UAttackComponent> AttackComponent;
 
@@ -76,14 +65,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
 	TObjectPtr<UHealthComponent> HealthComponent;
-
-	void DoContinueCombo();
-
-	virtual void CheckCombo_Implementation() override;
-	virtual void RecoveryEnd_Implementation() override;
-
-	FOnMontageEnded OnAttackMontageEnded;
-	void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	FOnMontageEnded OnDamageMontageEnded;
 	void DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted);
@@ -169,6 +150,7 @@ public:
 	void NotifyDashStarted();
 	void NotifyDashEnded();
 	ECharacterState GetCharacterState() const;
+	bool IsAttacking() const;
 	bool IsDead() const;
 	virtual void ResetForFlowRestart();
 

@@ -29,7 +29,6 @@ AMaidCharacter::AMaidCharacter()
 	AttackComponent = CreateDefaultSubobject<UAttackComponent>(TEXT("AttackComponent"));
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 
-	OnAttackMontageEnded.BindUObject(this, &AMaidCharacter::AttackMontageEnded);
 	OnDamageMontageEnded.BindUObject(this, &AMaidCharacter::DamageMontageEnded);
 	OnMeiDouFailMontageEnded.BindUObject(this, &AMaidCharacter::MeiDouFailMontageEnded);
 }
@@ -139,7 +138,7 @@ void AMaidCharacter::Jump()
 	}
 
 	// only jump in idle, so we don't have weird behavior of jumping while character is playing the attack montage
-	if (CharacterState == ECharacterState::ECS_Idle)
+	if (CharacterState == ECharacterState::ECS_Idle && !IsAttacking())
 	{
 		CharacterState = ECharacterState::ECS_Jumping;
 		Super::Jump();
@@ -192,6 +191,7 @@ void AMaidCharacter::DoStartComboAttack()
 		return;
 	}
 
+	// TODO: move this somewhere else or maybe come up with a cleaner approach to checks like this
 	if (DamageMontage)
 	{
 		if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
@@ -206,116 +206,8 @@ void AMaidCharacter::DoStartComboAttack()
 	// only attack if we are not in the air, at least for now
 	if (!GetCharacterMovement()->IsFalling())
 	{
-		// if we are currently attacking, register this attack
-		if (CharacterState == ECharacterState::ECS_Attacking)
-		{
-			CachedAttackInputTime = GetWorld()->GetTimeSeconds();
-
-			return;
-		}
-
-		DoContinueCombo();
+		AttackComponent->RequestAttack();
 	}
-}
-
-void AMaidCharacter::DoContinueCombo()
-{
-	if (!AttackComponent || !ComboAttackMontage)
-	{
-		CharacterState = ECharacterState::ECS_Idle;
-		return;
-	}
-
-	CharacterState = ECharacterState::ECS_Attacking;
-
-	ComboCount = 0;
-
-	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-	{
-		const float MontageLength = AnimInstance->Montage_Play(
-			ComboAttackMontage, 1.0f, EMontagePlayReturnType::MontageLength, 0.0f, true
-		);
-
-		if (MontageLength > 0.0f)
-		{
-			AnimInstance->Montage_SetEndDelegate(OnAttackMontageEnded, ComboAttackMontage);
-		}
-		else
-		{
-			CharacterState = ECharacterState::ECS_Idle;
-		}
-	}
-	else
-	{
-		CharacterState = ECharacterState::ECS_Idle;
-	}
-}
-
-void AMaidCharacter::CheckCombo_Implementation()
-{
-	if (CharacterState == ECharacterState::ECS_Attacking)
-	{
-		// if there were no inputs since our last input, don't continue the combo and enter recovery mode
-		if (CachedAttackInputTime <= 0.f)
-		{
-			CharacterState = ECharacterState::ECS_Recovering;
-			return;
-		}
-
-		// reset the count so the player needs to make another input to continue the chain
-		CachedAttackInputTime = 0.f;
-
-		++ComboCount;
-
-		if (ComboCount < ComboSectionNames.Num())
-		{
-			if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-			{
-				AnimInstance->Montage_JumpToSection(ComboSectionNames[ComboCount], ComboAttackMontage);
-			}
-		}
-	}
-}
-
-void AMaidCharacter::RecoveryEnd_Implementation()
-{
-	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-	{
-		AnimInstance->Montage_Stop(.3f, ComboAttackMontage);
-	}
-}
-
-void AMaidCharacter::AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-	if (bHasDied)
-	{
-		return;
-	}
-
-	ComboCount = 0;
-	CachedAttackInputTime = 0.f;
-
-	if (CharacterState == ECharacterState::ECS_MeiDouActive)
-	{
-		return;
-	}
-
-	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
-	{
-		if (DamageMontage && AnimInstance->Montage_IsPlaying(DamageMontage))
-		{
-			CharacterState = ECharacterState::ECS_Recovering;
-			return;
-		}
-	}
-
-	if (bDamageReactionActive)
-	{
-		CharacterState = ECharacterState::ECS_Recovering;
-		return;
-	}
-
-	CharacterState = ECharacterState::ECS_Idle;
 }
 
 void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -489,6 +381,7 @@ void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 
 	if ((CharacterState != ECharacterState::ECS_Idle &&
 		CharacterState != ECharacterState::ECS_MeiDouActive) ||
+		IsAttacking() ||
 		GetCharacterMovement()->IsFalling())
 	{
 		return;
@@ -676,18 +569,7 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 
 bool AMaidCharacter::CanStartDash() const
 {
-	if (bHasDied)
-	{
-		return false;
-	}
-
-	switch (CharacterState)
-	{
-	case ECharacterState::ECS_Idle:
-		return true;
-	default:
-		return false;
-	}
+	return !bHasDied && CharacterState == ECharacterState::ECS_Idle && !IsAttacking();
 }
 
 void AMaidCharacter::NotifyDashStarted()
@@ -728,6 +610,11 @@ ECharacterState AMaidCharacter::GetCharacterState() const
 	return CharacterState;
 }
 
+bool AMaidCharacter::IsAttacking() const
+{
+	return AttackComponent->IsAttacking();
+}
+
 bool AMaidCharacter::IsDead() const
 {
 	if (bHasDied)
@@ -743,8 +630,6 @@ void AMaidCharacter::ResetForFlowRestart()
 	bHasDied = false;
 	bDamageReactionActive = false;
 	InvulnerableUntilTime = 0.f;
-	ComboCount = 0;
-	CachedAttackInputTime = 0.f;
 	NextDamageSectionIndex = 0;
 	CharacterState = ECharacterState::ECS_Idle;
 

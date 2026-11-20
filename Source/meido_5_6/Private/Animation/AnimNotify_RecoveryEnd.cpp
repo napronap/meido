@@ -2,9 +2,8 @@
 
 
 #include "Animation/AnimNotify_RecoveryEnd.h"
-
-
-#include "Interfaces/ComboAttacker.h"
+#include "ActorComponents/AttackComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 
 void UAnimNotify_RecoveryEnd::Notify(
 	USkeletalMeshComponent* MeshComp,
@@ -14,12 +13,9 @@ void UAnimNotify_RecoveryEnd::Notify(
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 
-	AActor* Owner = MeshComp->GetOwner();
-
-	if (!Owner) return;
-
-	if (Owner->Implements<UComboAttacker>())
+	// preview mesh in the montage editor has no attack component
+	if (UAttackComponent* AttackComponent = MeshComp->GetOwner()->FindComponentByClass<UAttackComponent>())
 	{
-		IComboAttacker::Execute_RecoveryEnd(Owner);
+		AttackComponent->EndRecovery(Animation);
 	}
 }

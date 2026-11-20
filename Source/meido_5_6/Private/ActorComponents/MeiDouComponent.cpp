@@ -187,7 +187,11 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 			break;
 		}
 
-		AttackComponent->OpenHitWindow(ActiveComboDefinition.DamageConfig.SocketNames, EHitStopType::Heavy);
+		// TODO: move to MeiDou DA
+		FAttackHit Hit;
+		Hit.Sockets = ActiveComboDefinition.DamageConfig.SocketNames;
+		Hit.HitStopType = EHitStopType::Heavy;
+		AttackComponent->OpenHitWindow(Hit);
 		break;
 	}
 	case EMeiDouAnimEvent::EMDAE_TraceEnd:

@@ -2,10 +2,11 @@
 
 
 #include "ActorComponents/AttackComponent.h"
+#include "Animation/AnimMontage.h"
 #include "Characters/EnemyMaid.h"
+#include "Characters/PlayerMaidCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
-#include "Characters/PlayerMaidCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
@@ -16,6 +17,8 @@ UAttackComponent::UAttackComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 	// ticks only while a hit window is open
 	PrimaryComponentTick.bStartWithTickEnabled = false;
+
+	HandleStepMontageBlendingOut.BindUObject(this, &UAttackComponent::HandleStepMontageEnded);
 }
 
 void UAttackComponent::BeginPlay()
@@ -25,16 +28,95 @@ void UAttackComponent::BeginPlay()
 	OwnerCharacter = CastChecked<ACharacter>(GetOwner());
 }
 
-void UAttackComponent::OpenHitWindow(const TArray<FName>& Sockets, const EHitStopType HitStopType)
+void UAttackComponent::RequestAttack()
 {
-	CurrentHitSockets = Sockets;
-	CurrentHitStopType = HitStopType;
+	// not attacking will most likely mean I'm idle (MaidCharacter already approved)
+	if (!IsAttacking())
+	{
+		PlayStep(0);
+		return;
+	}
+
+	// attacking + can still chain (didn't hit recovery) 
+	if (!bRecovering)
+	{
+		bAttackQueued = true;
+	}
+}
+
+void UAttackComponent::OpenComboHitWindow(const UAnimSequenceBase* Animation)
+{
+	if (IsCurrentStep(Animation))
+	{
+		OpenHitWindow(ComboData->Steps[CurrentStep].Hit);
+	}
+}
+
+void UAttackComponent::CheckCombo(const UAnimSequenceBase* Animation)
+{
+	if (!IsCurrentStep(Animation))
+	{
+		return;
+	}
+
+	if (bAttackQueued && ComboData->Steps.IsValidIndex(CurrentStep + 1))
+	{
+		PlayStep(CurrentStep + 1);
+		return;
+	}
+
+	// no input since the step started (or it was the last one)
+	bRecovering = true;
+	bAttackQueued = false;
+}
+
+void UAttackComponent::EndRecovery(const UAnimSequenceBase* Animation)
+{
+	if (IsCurrentStep(Animation))
+	{
+		OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.3f, ComboData->Steps[CurrentStep].Montage);
+	}
+}
+
+void UAttackComponent::PlayStep(const int32 StepIndex)
+{
+	CurrentStep = StepIndex;
+	bAttackQueued = false;
+	bRecovering = false;
+
+	UAnimMontage* Montage = ComboData->Steps[StepIndex].Montage;
+	UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
+	AnimInstance->Montage_Play(Montage);
+	AnimInstance->Montage_SetBlendingOutDelegate(HandleStepMontageBlendingOut, Montage);
+}
+
+void UAttackComponent::HandleStepMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	// chaining interrupts the previous step's montage; only the current step ending (recovery, damage, dash...) ends the combo
+	if (!IsCurrentStep(Montage))
+	{
+		return;
+	}
+
+	CurrentStep = INDEX_NONE;
+	bAttackQueued = false;
+	bRecovering = false;
+}
+
+bool UAttackComponent::IsCurrentStep(const UAnimSequenceBase* Animation) const
+{
+	return IsAttacking() && ComboData->Steps[CurrentStep].Montage.Get() == Animation;
+}
+
+void UAttackComponent::OpenHitWindow(const FAttackHit& Hit)
+{
+	CurrentHit = Hit;
 	HitActorsThisWindow.Reset();
 
 	// first sweep starts where each socket is when the window opens
 	USkeletalMeshComponent* OwnerMesh = OwnerCharacter->GetMesh();
-	PreviousSocketLocations.Reset(Sockets.Num());
-	for (const FName SocketName : Sockets)
+	PreviousSocketLocations.Reset(Hit.Sockets.Num());
+	for (const FName SocketName : Hit.Sockets)
 	{
 		PreviousSocketLocations.Add(OwnerMesh->GetSocketLocation(SocketName));
 	}
@@ -63,21 +145,21 @@ void UAttackComponent::PerformHitTrace()
 	USkeletalMeshComponent* OwnerMesh = OwnerCharacter->GetMesh();
 	UWorld* World = GetWorld();
 
-	const FCollisionShape Box = FCollisionShape::MakeBox(BoxExtent);
+	const FCollisionShape Box = FCollisionShape::MakeBox(CurrentHit.BoxExtent);
 	const FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(AttackTrace), false, OwnerCharacter);
 
-	for (int32 i = 0; i < CurrentHitSockets.Num(); ++i)
+	for (int32 i = 0; i < CurrentHit.Sockets.Num(); ++i)
 	{
 		// sweep the path the box actually traveled since last frame
 		// apparently skipping frames is called tunneling
 		const FVector Start = PreviousSocketLocations[i];
-		const FVector End = OwnerMesh->GetSocketLocation(CurrentHitSockets[i]);
-		// previous frame's box will keep this frame's rotation but whatever 
-		const FQuat Rotation = OwnerMesh->GetSocketQuaternion(CurrentHitSockets[i]);
+		const FVector End = OwnerMesh->GetSocketLocation(CurrentHit.Sockets[i]);
+		// previous frame's box will keep this frame's rotation but whatever
+		const FQuat Rotation = OwnerMesh->GetSocketQuaternion(CurrentHit.Sockets[i]);
 		PreviousSocketLocations[i] = End;
 
-		DrawDebugBox(World, Start, BoxExtent, Rotation, FColor::Orange, false, .1f);
-		DrawDebugBox(World, End, BoxExtent, Rotation, FColor::Red, false, .1f);
+		DrawDebugBox(World, Start, CurrentHit.BoxExtent, Rotation, FColor::Orange, false, .1f);
+		DrawDebugBox(World, End, CurrentHit.BoxExtent, Rotation, FColor::Red, false, .1f);
 
 		FHitResult Hit;
 
@@ -98,7 +180,7 @@ void UAttackComponent::PerformHitTrace()
 
 		const float AppliedDamage = UGameplayStatics::ApplyDamage(
 			HitActor,
-			Damage,
+			CurrentHit.Damage,
 			OwnerCharacter->GetController(),
 			OwnerCharacter,
 			nullptr
@@ -110,7 +192,7 @@ void UAttackComponent::PerformHitTrace()
 			continue;
 		}
 
-		const float HitStopDuration = CurrentHitStopType == EHitStopType::Heavy
+		const float HitStopDuration = CurrentHit.HitStopType == EHitStopType::Heavy
 			? HeavyHitStopDuration
 			: LightHitStopDuration;
 

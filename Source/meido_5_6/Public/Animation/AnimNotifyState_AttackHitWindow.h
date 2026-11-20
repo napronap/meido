@@ -6,9 +6,8 @@
 #include "Animation/AnimNotifies/AnimNotifyState.h"
 #include "AnimNotifyState_AttackHitWindow.generated.h"
 
-/**
- * Opens the owner's AttackComponent hit window (light hit stop) for the notify's duration.
- */
+// Opens the owner's AttackComponent hit window for the notify's duration
+// Therefore it relies heavily on having an AttackComponent
 UCLASS()
 class MEIDO_5_6_API UAnimNotifyState_AttackHitWindow : public UAnimNotifyState
 {
@@ -27,7 +26,4 @@ public:
 		UAnimSequenceBase* Animation,
 		const FAnimNotifyEventReference& EventReference
 	) override;
-
-	UPROPERTY(EditAnywhere, Category="Hit")
-	FName HitSocketName = "Attack_Hand_R";
 };

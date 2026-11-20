@@ -8,7 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystem.h"
 #include "Sound/SoundBase.h"
-#include "Utils/CombatFeedbackLibrary.h"
+#include "Subsystems/CombatFeedbackSubsystem.h"
 
 AOmuriceBomb::AOmuriceBomb()
 {
@@ -112,16 +112,12 @@ void AOmuriceBomb::HandleImpact()
 			ECC_MAX
 		);
 
-		if (bApplyImpactHitStop)
+		UCombatFeedbackSubsystem* CombatFeedback = World->GetSubsystem<UCombatFeedbackSubsystem>();
+		if (bApplyImpactHitStop && CombatFeedback)
 		{
 			if (AActor* OwnerActor = GetOwner(); OwnerActor && bApplyImpactHitStopToOwner)
 			{
-				UCombatFeedbackLibrary::ApplyLocalHitStop(
-					this,
-					OwnerActor,
-					ImpactHitStopDuration,
-					ImpactHitStopTimeDilation
-				);
+				CombatFeedback->ApplyHitStop(OwnerActor, ImpactHitStopDuration, ImpactHitStopTimeDilation);
 			}
 
 			TArray<FOverlapResult> OverlapResults;
@@ -154,12 +150,7 @@ void AOmuriceBomb::HandleImpact()
 					}
 
 					ProcessedActors.Add(HitActor);
-					UCombatFeedbackLibrary::ApplyLocalHitStop(
-						this,
-						HitActor,
-						ImpactHitStopDuration,
-						ImpactHitStopTimeDilation
-					);
+					CombatFeedback->ApplyHitStop(HitActor, ImpactHitStopDuration, ImpactHitStopTimeDilation);
 				}
 			}
 		}

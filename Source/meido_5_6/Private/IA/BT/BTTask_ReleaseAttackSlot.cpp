@@ -22,7 +22,7 @@ EBTNodeResult::Type UBTTask_ReleaseAttackSlot::ExecuteTask(UBehaviorTreeComponen
 		AMaidCharacter* Maid = Cast<AMaidCharacter>(AIController->GetPawn());
 		if (Maid)
 		{
-			if (Maid->IsAttacking() || Maid->GetCharacterState() == ECharacterState::ECS_Recovering)
+			if (Maid->IsAttacking() || Maid->IsHitReacting())
 			{
 				return EBTNodeResult::InProgress;
 			}
@@ -47,7 +47,7 @@ void UBTTask_ReleaseAttackSlot::TickTask(UBehaviorTreeComponent& OwnerComp, uint
 		AMaidCharacter* Maid = Cast<AMaidCharacter>(AIController->GetPawn());
 		if (Maid)
 		{
-			if (Maid->IsAttacking() || Maid->GetCharacterState() == ECharacterState::ECS_Recovering)
+			if (Maid->IsAttacking() || Maid->IsHitReacting())
 			{
 				return;
 			}

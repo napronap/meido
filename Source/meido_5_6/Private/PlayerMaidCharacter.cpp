@@ -104,11 +104,6 @@ void APlayerMaidCharacter::Tick(float DeltaTime)
 			RotateCameraToTarget(Target, DeltaTime);
 		}
 	}
-
-	const UEnum* EnumPtr = StaticEnum<ECharacterState>();
-	FString Message = FString::Printf(
-		TEXT("Character State: %s"), *EnumPtr->GetNameStringByValue(static_cast<int64>(CharacterState)));
-	GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Red, Message);
 }
 
 void APlayerMaidCharacter::ApplyMenuCameraPose()
@@ -421,14 +416,7 @@ void APlayerMaidCharacter::JumpReleased()
 
 void APlayerMaidCharacter::DashPressed()
 {
-	if (!DashComponent)
-	{
-		return;
-	}
-
-	const bool bLockOnActive = LockOnComponent && LockOnComponent->IsLockedOn();
-	const FRotator ControlRotation = Controller ? Controller->GetControlRotation() : GetControlRotation();
-	DashComponent->TryDash(CachedMoveInput, ControlRotation, bLockOnActive);
+	DoDash(CachedMoveInput, LockOnComponent->IsLockedOn());
 }
 
 void APlayerMaidCharacter::ComboAttackPressed()

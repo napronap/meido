@@ -80,11 +80,11 @@ float AMaidCharacter::TakeDamage(
 		return 0.f;
 	}
 
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	if (bMeiDouFailed)
 	{
 		return 0.f;
 	}
-	
+
 	if (HasActiveIFrames())
 	{
 		return 0.f;
@@ -108,9 +108,8 @@ float AMaidCharacter::TakeDamage(
 
 void AMaidCharacter::DoMove(float Right, float Forward)
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
-		CharacterState == ECharacterState::ECS_Dashing ||
-		CharacterState == ECharacterState::ECS_MeiDouFailed)
+	// attack montages also block it through root motion, but the gate keeps it explicit (and covers AI input)
+	if (IsAttacking() || IsMeiDouActive() || IsDashing() || bMeiDouFailed)
 	{
 		return;
 	}
@@ -139,27 +138,11 @@ void AMaidCharacter::DoMove(float Right, float Forward)
 
 void AMaidCharacter::Jump()
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	// only jump when free, so we don't have weird behavior of jumping while character is playing an action montage
+	if (CanAct())
 	{
-		return;
-	}
-
-	// only jump in idle, so we don't have weird behavior of jumping while character is playing the attack montage
-	if (CharacterState == ECharacterState::ECS_Idle && !IsAttacking())
-	{
-		CharacterState = ECharacterState::ECS_Jumping;
 		Super::Jump();
 	}
-}
-
-void AMaidCharacter::StopJumping()
-{
-	if (CharacterState == ECharacterState::ECS_Jumping)
-	{
-		CharacterState = ECharacterState::ECS_Idle;
-	}
-
-	Super::StopJumping();
 }
 
 void AMaidCharacter::DoLook(float Yaw, float Pitch)
@@ -170,12 +153,8 @@ void AMaidCharacter::DoLook(float Yaw, float Pitch)
 
 bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 {
-	if (!DashComponent)
-	{
-		return false;
-	}
-
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
+	// enemies have no dash component
+	if (!DashComponent || !CanAct())
 	{
 		return false;
 	}
@@ -184,77 +163,45 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 		? Controller->GetControlRotation()
 		: GetActorRotation();
 
-	return DashComponent->TryDash(MoveInput, ControlOrActorRotation, bLockOnActive);
+	if (!DashComponent->TryDash(MoveInput, ControlOrActorRotation, bLockOnActive))
+	{
+		return false;
+	}
+
+	if (IsPlayerControlled())
+	{
+		GrantIFrames(DashIFrameDuration);
+	}
+
+	return true;
 }
 
 void AMaidCharacter::DoStartComboAttack()
 {
-	if (CharacterState == ECharacterState::ECS_MeiDouActive ||
-		CharacterState == ECharacterState::ECS_Recovering ||
-		CharacterState == ECharacterState::ECS_Dashing ||
-		CharacterState == ECharacterState::ECS_MeiDouFailed ||
-		bDamageReactionActive)
+	// attacking is allowed: AttackComponent queues the next step itself
+	if (IsLocked() || IsDashing() || IsMeiDouActive())
 	{
 		return;
 	}
 
-	// TODO: move this somewhere else or maybe come up with a cleaner approach to checks like this
-	if (DamageMontage)
-	{
-		if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
-		{
-			if (AnimInstance->Montage_IsPlaying(DamageMontage))
-			{
-				return;
-			}
-		}
-	}
-
-	// only attack if we are not in the air, at least for now
-	if (!GetCharacterMovement()->IsFalling())
-	{
-		AttackComponent->RequestAttack();
-	}
+	AttackComponent->RequestAttack();
 }
 
 void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	bDamageReactionActive = false;
-
-	if (bHasDied)
-	{
-		return;
-	}
-
-	if (HealthComponent && HealthComponent->IsDead())
-	{
-		return;
-	}
-
-	if (CharacterState != ECharacterState::ECS_MeiDouActive)
-	{
-		CharacterState = ECharacterState::ECS_Idle;
-	}
 }
 
 void AMaidCharacter::MeiDouFailMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (bHasDied)
-	{
-		return;
-	}
-
-	if (CharacterState == ECharacterState::ECS_MeiDouFailed)
-	{
-		CharacterState = ECharacterState::ECS_Idle;
-	}
+	bMeiDouFailed = false;
 }
 
 void AMaidCharacter::PlayHitReaction()
 {
 	// MeiDou (pose/result) has super armor: take damage but do not interrupt action montages
 	// should probably introduce a poise mechanic in the future...
-	if (MeiDouComponent && MeiDouComponent->GetMeiDouState() != EMeiDouState::EMDS_Idle)
+	if (IsMeiDouActive())
 	{
 		return;
 	}
@@ -281,14 +228,12 @@ void AMaidCharacter::PlayHitReaction()
 	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
 	if (!AnimInstance)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
 		return;
 	}
 
 	// Damage reactions should interrupt any ongoing action montage.
 	AnimInstance->Montage_Stop(0.05f);
 
-	CharacterState = ECharacterState::ECS_Recovering;
 	bDamageReactionActive = true;
 
 	if (IsPlayerControlled())
@@ -321,7 +266,6 @@ void AMaidCharacter::PlayHitReaction()
 	}
 
 	bDamageReactionActive = false;
-	CharacterState = ECharacterState::ECS_Idle;
 }
 
 void AMaidCharacter::Die()
@@ -345,7 +289,6 @@ void AMaidCharacter::Die()
 		EnemyAIController->SetAIEnabled(false);
 	}
 
-	CharacterState = ECharacterState::ECS_Recovering;
 	bDamageReactionActive = false;
 
 	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
@@ -376,10 +319,8 @@ void AMaidCharacter::RegisterMeiDouInput(const EMeiDouInput Input)
 		return;
 	}
 
-	if ((CharacterState != ECharacterState::ECS_Idle &&
-		CharacterState != ECharacterState::ECS_MeiDouActive) ||
-		IsAttacking() ||
-		GetCharacterMovement()->IsFalling())
+	// MeiDou active is allowed: the component queues the next pose itself
+	if (IsLocked() || IsAttacking() || IsDashing())
 	{
 		return;
 	}
@@ -503,11 +444,11 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 		MovementComponent->StopMovementImmediately();
 	}
 
-	CharacterState = ECharacterState::ECS_MeiDouFailed;
+	bMeiDouFailed = true;
 
 	if (!MeiDouFailMontage)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		bMeiDouFailed = false;
 		MeiDouComponent->OnRequestedAnimationFailed();
 		return;
 	}
@@ -515,7 +456,7 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 	const float MontageLength = PlayAnimMontage(MeiDouFailMontage, 1.f);
 	if (MontageLength <= 0.f)
 	{
-		CharacterState = ECharacterState::ECS_Idle;
+		bMeiDouFailed = false;
 		UE_LOG(
 			LogTemp,
 			Warning,
@@ -549,67 +490,40 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 	if (!bIsLocked)
 	{
 		SetMirrorFlag(false);
-
-		if (CharacterState == ECharacterState::ECS_MeiDouActive)
-		{
-			CharacterState = ECharacterState::ECS_Idle;
-		}
 		return;
 	}
 
-	CharacterState = ECharacterState::ECS_MeiDouActive;
 	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
 		MovementComponent->StopMovementImmediately();
 	}
 }
 
-bool AMaidCharacter::CanStartDash() const
-{
-	return !bHasDied && CharacterState == ECharacterState::ECS_Idle && !IsAttacking();
-}
-
-void AMaidCharacter::NotifyDashStarted()
-{
-	if (bHasDied)
-	{
-		return;
-	}
-
-	if (AttackComponent)
-	{
-		AttackComponent->CloseHitWindow();
-	}
-
-	CharacterState = ECharacterState::ECS_Dashing;
-
-	if (IsPlayerControlled())
-	{
-		GrantIFrames(DashIFrameDuration);
-	}
-}
-
-void AMaidCharacter::NotifyDashEnded()
-{
-	if (bHasDied)
-	{
-		return;
-	}
-
-	if (CharacterState == ECharacterState::ECS_Dashing)
-	{
-		CharacterState = ECharacterState::ECS_Idle;
-	}
-}
-
-ECharacterState AMaidCharacter::GetCharacterState() const
-{
-	return CharacterState;
-}
-
 bool AMaidCharacter::IsAttacking() const
 {
 	return AttackComponent->IsAttacking();
+}
+
+bool AMaidCharacter::IsDashing() const
+{
+	// enemies have no dash component
+	return DashComponent && DashComponent->IsDashing();
+}
+
+bool AMaidCharacter::IsMeiDouActive() const
+{
+	// enemies have no MeiDou component
+	return MeiDouComponent && MeiDouComponent->IsMeiDouActive();
+}
+
+bool AMaidCharacter::CanAct() const
+{
+	return !IsLocked() && !IsAttacking() && !IsDashing() && !IsMeiDouActive();
+}
+
+bool AMaidCharacter::IsLocked() const
+{
+	return IsDead() || bDamageReactionActive || bMeiDouFailed || GetCharacterMovement()->IsFalling();
 }
 
 bool AMaidCharacter::IsDead() const
@@ -628,7 +542,7 @@ void AMaidCharacter::ResetForFlowRestart()
 	bDamageReactionActive = false;
 	InvulnerableUntilTime = 0.f;
 	NextDamageSectionIndex = 0;
-	CharacterState = ECharacterState::ECS_Idle;
+	bMeiDouFailed = false;
 
 	SetLifeSpan(0.f);
 

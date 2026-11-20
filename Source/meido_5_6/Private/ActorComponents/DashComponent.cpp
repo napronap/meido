@@ -114,22 +114,8 @@ void UDashComponent::CancelDash()
 
 bool UDashComponent::CanDash() const
 {
-	if (bIsDashing || DashCooldownRemaining > 0.f || !OwnerMaid.IsValid() || !MovementComponent.IsValid())
-	{
-		return false;
-	}
-
-	if (!OwnerMaid->CanStartDash())
-	{
-		return false;
-	}
-
-	if (MovementComponent->IsFalling())
-	{
-		return false;
-	}
-
-	return true;
+	// only internal conditions: the character already checked everything else in DoDash
+	return !bIsDashing && DashCooldownRemaining <= 0.f && OwnerMaid.IsValid() && MovementComponent.IsValid();
 }
 
 FVector UDashComponent::ComputeDashWorldDirection(const FVector2D& MoveInput, const FRotator& ControlRotation) const
@@ -183,7 +169,6 @@ void UDashComponent::StartDash(const FVector& InDashDirection, const FVector2D& 
 
 	MovementComponent->StopMovementImmediately();
 	UpdateDashAnimState(true, AnimDirection);
-	OwnerMaid->NotifyDashStarted();
 }
 
 void UDashComponent::EndDash()
@@ -199,7 +184,6 @@ void UDashComponent::EndDash()
 	DashTimeRemaining = 0.f;
 	MovementComponent->StopMovementImmediately();
 	UpdateDashAnimState(false, FVector2D::ZeroVector);
-	OwnerMaid->NotifyDashEnded();
 }
 
 void UDashComponent::UpdateDashAnimState(bool bDashing, const FVector2D& AnimDirection) const

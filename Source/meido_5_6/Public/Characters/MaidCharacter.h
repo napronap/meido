@@ -4,7 +4,6 @@
 #include "ActorComponents/MeiDouComponent.h"
 #include "MeiDouPoseDataAsset.h"
 #include "GameFramework/Character.h"
-#include "Types/CharacterTypes.h"
 #include "Types/MeiDouTypes.h"
 #include "MaidCharacter.generated.h"
 
@@ -45,13 +44,6 @@ protected:
 	 */
 	void DoLook(float Yaw, float Pitch);
 	virtual void Jump() override;
-	virtual void StopJumping() override;
-
-	/*
-	 * State
-	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State")
-	ECharacterState CharacterState = ECharacterState::ECS_Idle;
 
 	/*
 	 * Combat
@@ -102,6 +94,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MeiDou")
 	UAnimMontage* MeiDouFailMontage = nullptr;
 
+	// true while the fail montage plays (stunned: can't act or take damage). Moves into MeiDouComponent in slice D
+	bool bMeiDouFailed = false;
+
 	/*
 	 * damage
 	 */
@@ -138,12 +133,18 @@ protected:
 	float InvulnerableUntilTime = 0.f;
 
 public:
-	bool CanStartDash() const;
-	void NotifyDashStarted();
-	void NotifyDashEnded();
-	ECharacterState GetCharacterState() const;
+	/*
+	 * state queries: each one asks the component that owns that state
+	 */
 	bool IsAttacking() const;
+	bool IsDashing() const;
+	bool IsMeiDouActive() const;
+	bool IsHitReacting() const { return bDamageReactionActive; }
 	bool IsDead() const;
+
+	// free to start a new action (jump, dash): nothing else is going on
+	bool CanAct() const;
+
 	virtual void ResetForFlowRestart();
 
 protected:
@@ -151,6 +152,9 @@ protected:
 	bool HasActiveIFrames() const;
 
 private:
+	// dead, reacting to a hit, stunned by a MeiDou fail or in the air: no action can start
+	bool IsLocked() const;
+
 	// tells the anim instance whether to mirror the current MeiDou pose
 	void SetMirrorFlag(bool bShouldMirror) const;
 };

@@ -13,24 +13,6 @@
 #include "Animation/AnimMontage.h"
 #include "IA/EnemyMaidAIController.h"
 
-namespace
-{
-	const FName MeiDouPoseSectionName(TEXT("Pose"));
-
-	void SetMeiDouMirrorFlag(USkeletalMeshComponent* Mesh, bool bShouldMirror)
-	{
-		if (!Mesh)
-		{
-			return;
-		}
-
-		if (UMaidAnimInstance* MaidAnimInstance = Cast<UMaidAnimInstance>(Mesh->GetAnimInstance()))
-		{
-			MaidAnimInstance->bShouldMirror = bShouldMirror;
-		}
-	}
-}
-
 // Sets default values
 AMaidCharacter::AMaidCharacter()
 {
@@ -530,7 +512,7 @@ void AMaidCharacter::HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimati
 		return;
 	}
 
-	SetMeiDouMirrorFlag(GetMesh(), Request.bUseMirroredMontage);
+	SetMirrorFlag(Request.bUseMirroredMontage);
 
 	UAnimMontage* PoseMontage = Pose->Montage;
 	if (!PoseMontage)
@@ -539,7 +521,7 @@ void AMaidCharacter::HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimati
 		return;
 	}
 
-	const float MontageLength = PlayAnimMontage(PoseMontage, Pose->PlayRate, MeiDouPoseSectionName);
+	const float MontageLength = PlayAnimMontage(PoseMontage, Pose->PlayRate, TEXT("Pose"));
 	if (MontageLength <= 0.f)
 	{
 		MeiDouComponent->OnRequestedAnimationFailed();
@@ -553,7 +535,7 @@ void AMaidCharacter::HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Resul
 		return;
 	}
 
-	SetMeiDouMirrorFlag(GetMesh(), false);
+	SetMirrorFlag(false);
 
 	if (const FMeiDouComboDefinition* ComboDefinition = MeiDouComponent->GetActiveComboDefinition())
 	{
@@ -625,7 +607,7 @@ void AMaidCharacter::HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result)
 		return;
 	}
 
-	SetMeiDouMirrorFlag(GetMesh(), false);
+	SetMirrorFlag(false);
 
 	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
@@ -677,7 +659,7 @@ void AMaidCharacter::HandleMeiDouControlLockChanged(bool bIsLocked)
 {
 	if (!bIsLocked)
 	{
-		SetMeiDouMirrorFlag(GetMesh(), false);
+		SetMirrorFlag(false);
 
 		if (CharacterState == ECharacterState::ECS_MeiDouActive)
 		{
@@ -815,4 +797,12 @@ bool AMaidCharacter::HasActiveIFrames() const
 	}
 
 	return GetWorld()->GetTimeSeconds() < InvulnerableUntilTime;
+}
+
+void AMaidCharacter::SetMirrorFlag(const bool bShouldMirror) const
+{
+	if (UMaidAnimInstance* MaidAnimInstance = Cast<UMaidAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr))
+	{
+		MaidAnimInstance->bShouldMirror = bShouldMirror;
+	}
 }

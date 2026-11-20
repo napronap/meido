@@ -175,4 +175,8 @@ public:
 protected:
 	void GrantIFrames(float DurationSeconds);
 	bool HasActiveIFrames() const;
+
+private:
+	// tells the anim instance whether to mirror the current MeiDou pose
+	void SetMirrorFlag(bool bShouldMirror) const;
 };

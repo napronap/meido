@@ -38,12 +38,6 @@ void AMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (HealthComponent)
-	{
-		HealthComponent->OnDamageTaken.AddDynamic(this, &AMaidCharacter::HandleDamageTaken);
-		HealthComponent->OnHealthDepleted.AddDynamic(this, &AMaidCharacter::HandleHealthDepleted);
-	}
-
 	if (MeiDouComponent)
 	{
 		MeiDouComponent->OnPoseAnimationRequested.AddDynamic(
@@ -81,7 +75,7 @@ float AMaidCharacter::TakeDamage(
 	AActor* DamageCauser
 )
 {
-	if (bHasDied || DamageAmount <= 0.f)
+	if (bHasDied)
 	{
 		return 0.f;
 	}
@@ -90,13 +84,26 @@ float AMaidCharacter::TakeDamage(
 	{
 		return 0.f;
 	}
-
+	
 	if (HasActiveIFrames())
 	{
 		return 0.f;
 	}
 
-	return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	// Super resolves the damage event (point/radial) into the final amount
+	const float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	const float AppliedDamage = HealthComponent->ApplyDamage(Damage, DamageCauser);
+
+	if (HealthComponent->IsDead())
+	{
+		Die();
+	}
+	else
+	{
+		PlayHitReaction();
+	}
+
+	return AppliedDamage;
 }
 
 void AMaidCharacter::DoMove(float Right, float Forward)
@@ -243,13 +250,7 @@ void AMaidCharacter::MeiDouFailMontageEnded(UAnimMontage* Montage, bool bInterru
 	}
 }
 
-void AMaidCharacter::HandleDamageTaken(
-	UHealthComponent* InHealthComponent,
-	float Damage,
-	float CurrentHealth,
-	AActor* DamageCauser,
-	AController* InstigatedBy
-)
+void AMaidCharacter::PlayHitReaction()
 {
 	// MeiDou (pose/result) has super armor: take damage but do not interrupt action montages
 	// should probably introduce a poise mechanic in the future...
@@ -323,12 +324,8 @@ void AMaidCharacter::HandleDamageTaken(
 	CharacterState = ECharacterState::ECS_Idle;
 }
 
-void AMaidCharacter::HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser)
+void AMaidCharacter::Die()
 {
-	if (bHasDied)
-	{
-		return;
-	}
 	bHasDied = true;
 
 	if (AttackComponent)

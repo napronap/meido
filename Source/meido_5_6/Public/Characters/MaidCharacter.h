@@ -117,17 +117,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
 	float DashIFrameDuration = 0.10f;
 
-	UFUNCTION()
-	void HandleDamageTaken(
-		UHealthComponent* InHealthComponent,
-		float Damage,
-		float CurrentHealth,
-		AActor* DamageCauser,
-		AController* InstigatedBy
-	);
-
-	UFUNCTION()
-	void HandleHealthDepleted(UHealthComponent* InHealthComponent, AActor* DamageCauser);
+	// called from TakeDamage once health was actually removed
+	void PlayHitReaction();
+	void Die();
 
 	int32 NextDamageSectionIndex = 0;
 	bool bDamageReactionActive = false;

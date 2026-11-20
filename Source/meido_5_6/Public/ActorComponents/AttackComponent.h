@@ -21,7 +21,9 @@ class UAnimSequenceBase;
 //		  	  ↓
 //	    AMaidCharacter (checks other components/conditions that are not related to this AC)
 //			  ↓
-//	   UAttackComponent (checks only internal conditions)
+//	   UAttackComponent	(checks only internal conditions)
+//			  ↓		(if connects)
+//	AMaidCharacter::TakeDamage (resolves damage through UE api)
 //
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class MEIDO_5_6_API UAttackComponent : public UActorComponent

@@ -6,9 +6,7 @@
 #include "Components/ActorComponent.h"
 #include "HealthComponent.generated.h"
 
-class AController;
 class AActor;
-class UDamageType;
 class UHealthComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(
@@ -17,15 +15,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(
 	float, CurrentHealth,
 	float, MaxHealth,
 	float, Delta
-);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_FiveParams(
-	FOnHealthDamageTaken,
-	UHealthComponent*, HealthComponent,
-	float, Damage,
-	float, CurrentHealth,
-	AActor*, DamageCauser,
-	AController*, InstigatedBy
 );
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
@@ -48,14 +37,16 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
+	// consumed by HUD and game flow
 	UPROPERTY(BlueprintAssignable, Category="Health")
 	FOnHealthChanged OnHealthChanged;
 
-	UPROPERTY(BlueprintAssignable, Category="Health")
-	FOnHealthDamageTaken OnDamageTaken;
-
+	// consumed by HUD and game flow
 	UPROPERTY(BlueprintAssignable, Category="Health")
 	FOnHealthDepleted OnHealthDepleted;
+
+	// called by the owner's TakeDamage, returns the health actually removed
+	float ApplyDamage(float Damage, AActor* DamageCauser);
 
 	UFUNCTION(BlueprintPure, Category="Health")
 	float GetCurrentHealth() const { return CurrentHealth; }
@@ -65,9 +56,6 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Health")
 	bool IsDead() const { return bIsDead; }
-
-	UFUNCTION(BlueprintCallable, Category="Health")
-	void Heal(float Amount);
 
 	UFUNCTION(BlueprintCallable, Category="Health")
 	void ResetToFullHealth();
@@ -81,15 +69,4 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health", meta=(AllowPrivateAccess="true"))
 	bool bIsDead = false;
-
-	UFUNCTION()
-	void HandleOwnerTakeAnyDamage(
-		AActor* DamagedActor,
-		float Damage,
-		const UDamageType* DamageType,
-		AController* InstigatedBy,
-		AActor* DamageCauser
-	);
-
-		
 };

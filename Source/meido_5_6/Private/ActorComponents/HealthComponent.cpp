@@ -17,63 +17,21 @@ void UHealthComponent::BeginPlay()
 
 	CurrentHealth = FMath::Clamp(MaxHealth, 0.f, MaxHealth);
 	bIsDead = CurrentHealth <= 0.f;
-
-	if (AActor* OwnerActor = GetOwner())
-	{
-		OwnerActor->OnTakeAnyDamage.AddDynamic(this, &UHealthComponent::HandleOwnerTakeAnyDamage);
-	}
-}
-
-void UHealthComponent::Heal(float Amount)
-{
-	if (Amount <= 0.f || bIsDead)
-	{
-		return;
-	}
-
-	const float PreviousHealth = CurrentHealth;
-	CurrentHealth = FMath::Clamp(CurrentHealth + Amount, 0.f, MaxHealth);
-	const float Delta = CurrentHealth - PreviousHealth;
-
-	if (Delta > 0.f)
-	{
-		OnHealthChanged.Broadcast(this, CurrentHealth, MaxHealth, Delta);
-	}
 }
 
 void UHealthComponent::ResetToFullHealth()
 {
-	const float PreviousHealth = CurrentHealth;
-	CurrentHealth = FMath::Clamp(MaxHealth, 0.f, MaxHealth);
-	bIsDead = CurrentHealth <= 0.f;
-
-	const float Delta = CurrentHealth - PreviousHealth;
-	OnHealthChanged.Broadcast(this, CurrentHealth, MaxHealth, Delta);
+	CurrentHealth = MaxHealth;
+	bIsDead = false;
+	
+	OnHealthChanged.Broadcast(this, CurrentHealth, MaxHealth, MaxHealth);
 }
 
-void UHealthComponent::HandleOwnerTakeAnyDamage(
-	AActor* DamagedActor,
-	const float Damage,
-	const UDamageType* DamageType,
-	AController* InstigatedBy,
-	AActor* DamageCauser
-)
+float UHealthComponent::ApplyDamage(const float Damage, AActor* DamageCauser)
 {
-	if (!DamagedActor || bIsDead || Damage <= 0.f)
-	{
-		return;
-	}
+	const float AppliedDamage = FMath::Min(Damage, CurrentHealth);
+	CurrentHealth -= AppliedDamage;
 
-	const float PreviousHealth = CurrentHealth;
-	CurrentHealth = FMath::Clamp(CurrentHealth - Damage, 0.f, MaxHealth);
-	const float AppliedDamage = PreviousHealth - CurrentHealth;
-
-	if (AppliedDamage <= 0.f)
-	{
-		return;
-	}
-
-	OnDamageTaken.Broadcast(this, AppliedDamage, CurrentHealth, DamageCauser, InstigatedBy);
 	OnHealthChanged.Broadcast(this, CurrentHealth, MaxHealth, -AppliedDamage);
 
 	if (CurrentHealth <= 0.f)
@@ -81,5 +39,7 @@ void UHealthComponent::HandleOwnerTakeAnyDamage(
 		bIsDead = true;
 		OnHealthDepleted.Broadcast(this, DamageCauser);
 	}
+
+	return AppliedDamage;
 }
 

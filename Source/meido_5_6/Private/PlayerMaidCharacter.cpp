@@ -33,6 +33,11 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ViewCamera"));
 	ViewCamera->SetupAttachment(CameraBoom);
 
+	// player-only gameplay components (pointers for Dash/MeiDou live in AMaidCharacter for now)
+	DashComponent = CreateDefaultSubobject<UDashComponent>(TEXT("DashComponent"));
+	MeiDouComponent = CreateDefaultSubobject<UMeiDouComponent>(TEXT("MeiDouComponent"));
+	LockOnComponent = CreateDefaultSubobject<ULockOnComponent>(TEXT("LockOnComponent"));
+
 	// Player should remain in scene on death for lose flow/camera
 	// (different from enemy maid that uses this to despawn)
 	DeathLifeSpanSeconds = 0.f;

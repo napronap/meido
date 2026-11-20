@@ -6,7 +6,6 @@
 #include "ActorComponents/AttackComponent.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/HealthComponent.h"
-#include "ActorComponents/LockOnComponent.h"
 #include "ActorComponents/MeiDouComponent.h"
 #include "AnimInstances/MaidAnimInstance.h"
 #include "Animation/AnimInstance.h"
@@ -45,6 +44,9 @@ AMaidCharacter::AMaidCharacter()
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 400.f, 0.f);
 
+	AttackComponent = CreateDefaultSubobject<UAttackComponent>(TEXT("AttackComponent"));
+	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+
 	OnAttackMontageEnded.BindUObject(this, &AMaidCharacter::AttackMontageEnded);
 	OnDamageMontageEnded.BindUObject(this, &AMaidCharacter::DamageMontageEnded);
 	OnMeiDouFailMontageEnded.BindUObject(this, &AMaidCharacter::MeiDouFailMontageEnded);
@@ -54,12 +56,6 @@ AMaidCharacter::AMaidCharacter()
 void AMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-
-	AttackComponent = FindComponentByClass<UAttackComponent>();
-	DashComponent = FindComponentByClass<UDashComponent>();
-	HealthComponent = FindComponentByClass<UHealthComponent>();
-	MeiDouComponent = FindComponentByClass<UMeiDouComponent>();
-	LockOnComponent = FindComponentByClass<ULockOnComponent>();
 
 	if (HealthComponent)
 	{

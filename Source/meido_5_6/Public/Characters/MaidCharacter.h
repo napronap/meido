@@ -12,7 +12,6 @@
 class UAttackComponent;
 class UDashComponent;
 class UHealthComponent;
-class ULockOnComponent;
 class UAnimMontage;
 class AController;
 
@@ -69,13 +68,14 @@ protected:
 	float CachedAttackInputTime = 0.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
-	UAttackComponent* AttackComponent;
+	TObjectPtr<UAttackComponent> AttackComponent;
 
+	// created by APlayerMaidCharacter (null on enemies); moves to the player class in slice C
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Movement")
-	UDashComponent* DashComponent;
+	TObjectPtr<UDashComponent> DashComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
-	UHealthComponent* HealthComponent;
+	TObjectPtr<UHealthComponent> HealthComponent;
 
 	void DoContinueCombo();
 
@@ -94,8 +94,9 @@ protected:
 	/*
 	 * mei dou
 	 */
+	// created by APlayerMaidCharacter (null on enemies); moves to the player class in slice D
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
-	UMeiDouComponent* MeiDouComponent;
+	TObjectPtr<UMeiDouComponent> MeiDouComponent;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MeiDou")
 	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
@@ -162,12 +163,6 @@ protected:
 
 	bool bHasDied = false;
 	float InvulnerableUntilTime = 0.f;
-
-	/*
-	 * lock on
-	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LockOn")
-	ULockOnComponent* LockOnComponent;
 
 public:
 	bool CanStartDash() const;

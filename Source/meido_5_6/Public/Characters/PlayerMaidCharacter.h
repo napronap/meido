@@ -10,6 +10,7 @@
 class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
+class ULockOnComponent;
 
 UCLASS()
 class MEIDO_5_6_API APlayerMaidCharacter : public AMaidCharacter
@@ -46,6 +47,9 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void Tick(float DeltaTime) override;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LockOn")
+	TObjectPtr<ULockOnComponent> LockOnComponent;
 
 	/*
 	 * Input Actions

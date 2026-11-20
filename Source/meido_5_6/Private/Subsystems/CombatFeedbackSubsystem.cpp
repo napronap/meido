@@ -8,16 +8,10 @@
 
 void UCombatFeedbackSubsystem::ApplyHitStop(AActor* Actor, const float Duration, const float TimeDilation)
 {
-	UWorld* World = GetWorld();
-	if (!Actor || !World || Duration <= 0.f)
-	{
-		return;
-	}
-
 	Actor->CustomTimeDilation = FMath::Clamp(TimeDilation, 0.001f, 1.f);
 
 	FTimerHandle& Handle = ActiveHitStops.FindOrAdd(Actor);
-	World->GetTimerManager().SetTimer(
+	GetWorld()->GetTimerManager().SetTimer(
 		Handle,
 		// the actor will be redirected to EndHitStop
 		FTimerDelegate::CreateUObject(this, &UCombatFeedbackSubsystem::EndHitStop, TWeakObjectPtr<AActor>(Actor)),
@@ -34,20 +28,11 @@ void UCombatFeedbackSubsystem::PlayCameraShake(const TSubclassOf<UCameraShakeBas
 	}
 }
 
-bool UCombatFeedbackSubsystem::DoesSupportWorldType(const EWorldType::Type WorldType) const
-{
-	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
-}
-
 void UCombatFeedbackSubsystem::Deinitialize()
 {
-	UWorld* World = GetWorld();
 	for (TPair<TWeakObjectPtr<AActor>, FTimerHandle>& Pair : ActiveHitStops)
 	{
-		if (World)
-		{
-			World->GetTimerManager().ClearTimer(Pair.Value);
-		}
+		GetWorld()->GetTimerManager().ClearTimer(Pair.Value);
 
 		if (AActor* Actor = Pair.Key.Get())
 		{

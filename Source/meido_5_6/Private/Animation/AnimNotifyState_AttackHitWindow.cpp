@@ -3,7 +3,7 @@
 
 #include "Animation/AnimNotifyState_AttackHitWindow.h"
 #include "ActorComponents/AttackComponent.h"
-#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
 
 void UAnimNotifyState_AttackHitWindow::NotifyBegin(
 	USkeletalMeshComponent* MeshComp,
@@ -14,23 +14,10 @@ void UAnimNotifyState_AttackHitWindow::NotifyBegin(
 {
 	Super::NotifyBegin(MeshComp, Animation, TotalDuration, EventReference);
 
-	if (!MeshComp) return;
-
-	ACharacter* Character = Cast<ACharacter>(MeshComp->GetOwner());
-	if (!Character) return;
-
-	UAttackComponent* AttackComponent = Character->FindComponentByClass<UAttackComponent>();
-
-	if (AttackComponent)
+	// need this check for the notify to not crash when it doesn't find the attack component (preview mesh won't have it)
+	if (UAttackComponent* AttackComponent = MeshComp->GetOwner()->FindComponentByClass<UAttackComponent>())
 	{
-		if (HitSocketNames.Num() > 0)
-		{
-			AttackComponent->OpenHitWindowSockets(HitSocketNames);
-		}
-		else
-		{
-			AttackComponent->OpenHitWindow(HitSocketName);
-		}
+		AttackComponent->OpenHitWindow({ HitSocketName }, EHitStopType::Light);
 	}
 }
 
@@ -42,16 +29,8 @@ void UAnimNotifyState_AttackHitWindow::NotifyEnd(
 {
 	Super::NotifyEnd(MeshComp, Animation, EventReference);
 
-	if (!MeshComp) return;
-
-	ACharacter* Character = Cast<ACharacter>(MeshComp->GetOwner());
-	if (!Character) return;
-
-	UAttackComponent* AttackComp =
-		Character->FindComponentByClass<UAttackComponent>();
-
-	if (AttackComp)
+	if (UAttackComponent* AttackComponent = MeshComp->GetOwner()->FindComponentByClass<UAttackComponent>())
 	{
-		AttackComp->CloseHitWindow();
+		AttackComponent->CloseHitWindow();
 	}
 }

@@ -7,7 +7,7 @@
 #include "AnimNotifyState_AttackHitWindow.generated.h"
 
 /**
- * 
+ * Opens the owner's AttackComponent hit window (light hit stop) for the notify's duration.
  */
 UCLASS()
 class MEIDO_5_6_API UAnimNotifyState_AttackHitWindow : public UAnimNotifyState
@@ -28,11 +28,6 @@ public:
 		const FAnimNotifyEventReference& EventReference
 	) override;
 
-	// Legacy single-socket entry. Used when HitSocketNames is empty.
 	UPROPERTY(EditAnywhere, Category="Hit")
 	FName HitSocketName = "Attack_Hand_R";
-
-	// Optional multi-socket setup for a wider/multi-point hit window.
-	UPROPERTY(EditAnywhere, Category="Hit")
-	TArray<FName> HitSocketNames;
 };

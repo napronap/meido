@@ -21,7 +21,6 @@ public:
 	void PlayCameraShake(TSubclassOf<UCameraShakeBase> ShakeClass, float Scale = 1.f);
 
 protected:
-	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
 	virtual void Deinitialize() override;
 
 private:

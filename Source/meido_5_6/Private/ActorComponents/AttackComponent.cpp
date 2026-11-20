@@ -4,254 +4,49 @@
 #include "ActorComponents/AttackComponent.h"
 #include "Characters/EnemyMaid.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "GameFramework/Character.h"
 #include "DrawDebugHelpers.h"
-#include "Kismet/GameplayStatics.h"
-#include "TimerManager.h"
+#include "Characters/PlayerMaidCharacter.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
+#include "Kismet/GameplayStatics.h"
+#include "Subsystems/CombatFeedbackSubsystem.h"
 
-// Sets default values for this component's properties
 UAttackComponent::UAttackComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
+	// ticks only while a hit window is open
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
-
-// Called when the game starts
 void UAttackComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	OwnerCharacter = Cast<ACharacter>(GetOwner());
-	CurrentHitSockets.Reset();
-	if (HitSocketName != NAME_None)
-	{
-		CurrentHitSockets.Add(HitSocketName);
-	}
+	OwnerCharacter = CastChecked<ACharacter>(GetOwner());
 }
 
-void UAttackComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void UAttackComponent::OpenHitWindow(const TArray<FName>& Sockets, const EHitStopType HitStopType)
 {
-	for (auto& Pair : ActiveHitStopTimers)
+	CurrentHitSockets = Sockets;
+	CurrentHitStopType = HitStopType;
+	HitActorsThisWindow.Reset();
+
+	// first sweep starts where each socket is when the window opens
+	USkeletalMeshComponent* OwnerMesh = OwnerCharacter->GetMesh();
+	PreviousSocketLocations.Reset(Sockets.Num());
+	for (const FName SocketName : Sockets)
 	{
-		if (AActor* TargetActor = Pair.Key.Get())
-		{
-			RestoreLocalTimeDilation(TargetActor);
-		}
+		PreviousSocketLocations.Add(OwnerMesh->GetSocketLocation(SocketName));
 	}
 
-	ActiveHitStopTimers.Reset();
-
-	Super::EndPlay(EndPlayReason);
-}
-
-void UAttackComponent::StartAttack(EHitStopType InHitStopType)
-{
-	if (bIsAttacking) return;
-
-	bIsAttacking = true;
-	HitActorsThisAttack.Reset();
-	CurrentHitStopType = InHitStopType;
-}
-
-void UAttackComponent::OpenHitWindow(FName InSocket)
-{
-	TArray<FName> Sockets;
-	if (InSocket != NAME_None)
-	{
-		Sockets.Add(InSocket);
-	}
-
-	OpenHitWindowSockets(Sockets);
-}
-
-void UAttackComponent::OpenHitWindowSockets(const TArray<FName>& InSockets)
-{
-	CurrentHitSockets.Reset();
-	for (const FName SocketName : InSockets)
-	{
-		if (SocketName == NAME_None || CurrentHitSockets.Contains(SocketName))
-		{
-			continue;
-		}
-
-		CurrentHitSockets.Add(SocketName);
-	}
-
-	if (CurrentHitSockets.Num() <= 0 && HitSocketName != NAME_None)
-	{
-		CurrentHitSockets.Add(HitSocketName);
-	}
-
-	// only damage one per hit window
-	HitActorsThisAttack.Reset();
-	bHitWindowOpen = true;
+	SetComponentTickEnabled(true);
 }
 
 void UAttackComponent::CloseHitWindow()
 {
-	bHitWindowOpen = false;
-	bIsAttacking = false;
+	SetComponentTickEnabled(false);
 }
 
-void UAttackComponent::PerformHitTrace()
-{
-	if (!OwnerCharacter) return;
-
-	USkeletalMeshComponent* OwnerMesh = OwnerCharacter->GetMesh();
-	if (!OwnerMesh || CurrentHitSockets.Num() <= 0)
-	{
-		return;
-	}
-
-	FCollisionShape Box = FCollisionShape::MakeBox(BoxExtent);
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(AttackTrace), false, OwnerCharacter);
-	QueryParams.AddIgnoredActor(OwnerCharacter);
-
-	for (const FName SocketName : CurrentHitSockets)
-	{
-		if (SocketName == NAME_None || !OwnerMesh->DoesSocketExist(SocketName))
-		{
-			continue;
-		}
-
-		const FVector Start = OwnerMesh->GetSocketLocation(SocketName);
-		const FVector End = Start + OwnerCharacter->GetActorForwardVector() * TraceDistance;
-
-		FHitResult Hit;
-		const bool bHit = GetWorld()->SweepSingleByChannel(
-			Hit,
-			Start,
-			End,
-			FQuat::Identity,
-			ECC_Pawn,
-			Box,
-			QueryParams
-		);
-
-		DrawDebugBox(
-			GetWorld(),
-			(Start + End) * .5f,
-			BoxExtent,
-			FColor::Red,
-			false,
-			.1f
-		);
-
-		if (!bHit || !Hit.GetActor() || HitActorsThisAttack.Contains(Hit.GetActor()))
-		{
-			continue;
-		}
-
-		AActor* HitActor = Hit.GetActor();
-		if (ShouldIgnoreHitActor(HitActor))
-		{
-			continue;
-		}
-
-		UGameplayStatics::ApplyDamage(
-			HitActor,
-			Damage,
-			OwnerCharacter->GetController(),
-			OwnerCharacter,
-			nullptr
-		);
-
-		ApplyLocalHitStop(OwnerCharacter, CurrentHitStopType);
-		ApplyLocalHitStop(HitActor, CurrentHitStopType);
-		HitActorsThisAttack.Add(HitActor);
-	}
-}
-
-bool UAttackComponent::ShouldIgnoreHitActor(const AActor* HitActor) const
-{
-	if (!HitActor || !OwnerCharacter)
-	{
-		return true;
-	}
-
-	if (bAllowFriendlyFire)
-	{
-		return false;
-	}
-
-	const bool bOwnerIsEnemyMaid = OwnerCharacter->IsA(AEnemyMaid::StaticClass());
-	const bool bTargetIsEnemyMaid = HitActor->IsA(AEnemyMaid::StaticClass());
-
-	if (bOwnerIsEnemyMaid && bTargetIsEnemyMaid)
-	{
-		return true;
-	}
-
-	return false;
-}
-
-void UAttackComponent::ApplyLocalHitStop(AActor* TargetActor, const EHitStopType HitStopType)
-{
-	if (!TargetActor || !GetWorld())
-	{
-		return;
-	}
-
-	const float Duration = GetHitStopDuration(HitStopType);
-	if (Duration <= 0.f)
-	{
-		return;
-	}
-
-	TargetActor->CustomTimeDilation = FMath::Clamp(HitStopTimeDilation, 0.001f, 1.0f);
-
-	FTimerHandle& TimerHandle = ActiveHitStopTimers.FindOrAdd(TargetActor);
-	GetWorld()->GetTimerManager().ClearTimer(TimerHandle);
-
-	const TWeakObjectPtr<AActor> WeakActor = TargetActor;
-	FTimerDelegate RestoreDelegate;
-	RestoreDelegate.BindLambda([this, WeakActor]()
-	{
-		if (!IsValid(this))
-		{
-			return;
-		}
-
-		if (AActor* ActorToRestore = WeakActor.Get())
-		{
-			RestoreLocalTimeDilation(ActorToRestore);
-		}
-
-		ActiveHitStopTimers.Remove(WeakActor);
-	});
-
-	GetWorld()->GetTimerManager().SetTimer(TimerHandle, RestoreDelegate, Duration, false);
-}
-
-void UAttackComponent::RestoreLocalTimeDilation(AActor* TargetActor)
-{
-	if (!TargetActor)
-	{
-		return;
-	}
-
-	TargetActor->CustomTimeDilation = 1.0f;
-}
-
-float UAttackComponent::GetHitStopDuration(const EHitStopType HitStopType) const
-{
-	switch (HitStopType)
-	{
-	case EHitStopType::Heavy:
-		return HeavyHitStopDuration;
-	case EHitStopType::Light:
-	default:
-		return LightHitStopDuration;
-	}
-}
-
-
-// Called every frame
 void UAttackComponent::TickComponent(
 	float DeltaTime,
 	ELevelTick TickType,
@@ -260,8 +55,82 @@ void UAttackComponent::TickComponent(
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (bHitWindowOpen)
+	PerformHitTrace();
+}
+
+void UAttackComponent::PerformHitTrace()
+{
+	USkeletalMeshComponent* OwnerMesh = OwnerCharacter->GetMesh();
+	UWorld* World = GetWorld();
+
+	const FCollisionShape Box = FCollisionShape::MakeBox(BoxExtent);
+	const FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(AttackTrace), false, OwnerCharacter);
+
+	for (int32 i = 0; i < CurrentHitSockets.Num(); ++i)
 	{
-		PerformHitTrace();
+		// sweep the path the box actually traveled since last frame
+		// apparently skipping frames is called tunneling
+		const FVector Start = PreviousSocketLocations[i];
+		const FVector End = OwnerMesh->GetSocketLocation(CurrentHitSockets[i]);
+		// previous frame's box will keep this frame's rotation but whatever 
+		const FQuat Rotation = OwnerMesh->GetSocketQuaternion(CurrentHitSockets[i]);
+		PreviousSocketLocations[i] = End;
+
+		DrawDebugBox(World, Start, BoxExtent, Rotation, FColor::Orange, false, .1f);
+		DrawDebugBox(World, End, BoxExtent, Rotation, FColor::Red, false, .1f);
+
+		FHitResult Hit;
+
+		// ObjectType works for now since in this game only pawns hit other pawns
+		// if I ever need to hit another thing it may be better to consider creating a channel
+		if (!World->SweepSingleByObjectType(Hit, Start, End, Rotation, ECC_Pawn, Box, QueryParams))
+		{
+			continue;
+		}
+
+		AActor* HitActor = Hit.GetActor();
+		if (HitActorsThisWindow.Contains(HitActor) || ShouldIgnoreHitActor(HitActor))
+		{
+			continue;
+		}
+
+		HitActorsThisWindow.Add(HitActor);
+
+		const float AppliedDamage = UGameplayStatics::ApplyDamage(
+			HitActor,
+			Damage,
+			OwnerCharacter->GetController(),
+			OwnerCharacter,
+			nullptr
+		);
+
+		// rejected hits (iframes, dead, etc)
+		if (AppliedDamage <= 0.f)
+		{
+			continue;
+		}
+
+		const float HitStopDuration = CurrentHitStopType == EHitStopType::Heavy
+			? HeavyHitStopDuration
+			: LightHitStopDuration;
+
+		UCombatFeedbackSubsystem* CombatFeedback = World->GetSubsystem<UCombatFeedbackSubsystem>();
+		CombatFeedback->ApplyHitStop(OwnerCharacter, HitStopDuration);
+		CombatFeedback->ApplyHitStop(HitActor, HitStopDuration);
 	}
+}
+
+bool UAttackComponent::ShouldIgnoreHitActor(const AActor* HitActor) const
+{
+	if (OwnerCharacter->IsA<AEnemyMaid>())
+	{
+		return !HitActor->IsA<APlayerMaidCharacter>();
+	}
+
+	if (OwnerCharacter->IsA<APlayerMaidCharacter>())
+	{
+		return !HitActor->IsA<AEnemyMaid>();
+	}
+
+	return true;
 }

@@ -226,7 +226,6 @@ void AMaidCharacter::DoContinueCombo()
 		return;
 	}
 
-	AttackComponent->StartAttack();
 	CharacterState = ECharacterState::ECS_Attacking;
 
 	ComboCount = 0;

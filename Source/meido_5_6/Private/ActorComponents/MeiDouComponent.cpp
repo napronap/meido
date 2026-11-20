@@ -187,15 +187,7 @@ void UMeiDouComponent::HandleAnimEvent(EMeiDouAnimEvent EventKey)
 			break;
 		}
 
-		AttackComponent->StartAttack(EHitStopType::Heavy);
-
-		TArray<FName> DamageSockets = ActiveComboDefinition.DamageConfig.SocketNames;
-		if (DamageSockets.Num() <= 0 && ActiveComboDefinition.DamageConfig.SocketName != NAME_None)
-		{
-			DamageSockets.Add(ActiveComboDefinition.DamageConfig.SocketName);
-		}
-
-		AttackComponent->OpenHitWindowSockets(DamageSockets);
+		AttackComponent->OpenHitWindow(ActiveComboDefinition.DamageConfig.SocketNames, EHitStopType::Heavy);
 		break;
 	}
 	case EMeiDouAnimEvent::EMDAE_TraceEnd:

@@ -13,20 +13,10 @@ void UAnimNotify_MeiDouEvent::Notify(
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 
-	if (!MeshComp)
+	// preview mesh in the montage editor has no MeiDou component
+	if (UMeiDouComponent* MeiDouComponent = MeshComp->GetOwner()->FindComponentByClass<UMeiDouComponent>())
 	{
-		return;
-	}
-
-	AActor* Owner = MeshComp->GetOwner();
-	if (!Owner)
-	{
-		return;
-	}
-
-	if (UMeiDouComponent* MeiDouComponent = Owner->FindComponentByClass<UMeiDouComponent>())
-	{
-		MeiDouComponent->HandleAnimEvent(EventKey);
+		MeiDouComponent->HandleAnimEvent(EventKey, Animation);
 	}
 }
 

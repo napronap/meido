@@ -13,7 +13,7 @@ void UCombatFeedbackSubsystem::ApplyHitStop(AActor* Actor, const float Duration,
 	FTimerHandle& Handle = ActiveHitStops.FindOrAdd(Actor);
 	GetWorld()->GetTimerManager().SetTimer(
 		Handle,
-		// the actor will be redirected to EndHitStop
+		// the actor will be redirected to EndHitStop as parameter
 		FTimerDelegate::CreateUObject(this, &UCombatFeedbackSubsystem::EndHitStop, TWeakObjectPtr<AActor>(Actor)),
 		Duration,
 		false

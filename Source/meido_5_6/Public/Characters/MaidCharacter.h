@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "ActorComponents/MeiDouComponent.h"
-#include "MeiDouPoseDataAsset.h"
 #include "GameFramework/Character.h"
 #include "Types/MeiDouTypes.h"
 #include "MaidCharacter.generated.h"
@@ -29,9 +28,7 @@ public:
 		AActor* DamageCauser
 	) override;
 
-	/*
-	 * movement/combat actions (player or AI)
-	 */
+	// movement/combat actions (player or AI)
 	void DoMove(float Right, float Forward);
 	void DoStartComboAttack();
 	bool DoDash(const FVector2D& MoveInput = FVector2D::ZeroVector, bool bLockOnActive = false);
@@ -39,19 +36,15 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	/*
-	 *	movement (maybe put camera in player maid class because AI maid won't use it
-	 */
+	// movement (maybe put camera in player maid class because AI maid won't use it
 	void DoLook(float Yaw, float Pitch);
 	virtual void Jump() override;
 
-	/*
-	 * Combat
-	 */
+	// Combat
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UAttackComponent> AttackComponent;
 
-	// created by APlayerMaidCharacter (null on enemies); moves to the player class in slice C
+	// created by APlayerMaidCharacter (null on enemies)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Movement")
 	TObjectPtr<UDashComponent> DashComponent;
 
@@ -61,51 +54,21 @@ protected:
 	FOnMontageEnded OnDamageMontageEnded;
 	void DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	FOnMontageEnded OnMeiDouFailMontageEnded;
-	void MeiDouFailMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-
-	/*
-	 * mei dou
-	 */
-	// created by APlayerMaidCharacter (null on enemies); moves to the player class in slice D
+	// MeiDou
+	// created by APlayerMaidCharacter (null on enemies)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
 	TObjectPtr<UMeiDouComponent> MeiDouComponent;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MeiDou")
-	TMap<EMeiDouInput, UMeiDouPoseDataAsset*> MeiDouPoseDataMap;
-
 	void RegisterMeiDouInput(EMeiDouInput Input);
 
-	UFUNCTION()
-	void HandleMeiDouPoseAnimationRequested(const FMeiDouPoseAnimationRequest& Request);
-
-	UFUNCTION()
-	void HandleMeiDouComboResolved(const FMeiDouResolvedCombo& Result);
-
-	UFUNCTION()
-	void HandleMeiDouComboFailed(const FMeiDouResolvedCombo& Result);
-
-	UFUNCTION()
-	void HandleMeiDouControlLockChanged(bool bIsLocked);
-
-	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
-	TMap<EMeiDouInput, UAnimMontage*> PoseMontages;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MeiDou")
-	UAnimMontage* MeiDouFailMontage = nullptr;
-
-	// true while the fail montage plays (stunned: can't act or take damage). Moves into MeiDouComponent in slice D
-	bool bMeiDouFailed = false;
-
-	/*
-	 * damage
-	 */
+	// Damage receiving
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Damage")
 	UAnimMontage* DamageMontage = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Damage")
 	TArray<FName> DamageSectionNames;
 
+	// TODO: remove, should be driven by the montage
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|IFrames", meta=(ClampMin="0.0", UIMin="0.0"))
 	float PostDamageIFrameDuration = 0.35f;
 
@@ -119,9 +82,7 @@ protected:
 	int32 NextDamageSectionIndex = 0;
 	bool bDamageReactionActive = false;
 
-	/*
-	 * death
-	 */
+	// Death
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Death")
 	UAnimMontage* DeathMontage = nullptr;
 
@@ -133,16 +94,17 @@ protected:
 	float InvulnerableUntilTime = 0.f;
 
 public:
-	/*
-	 * state queries: each one asks the component that owns that state
-	 */
+	// state queries, always ask the owning component
 	bool IsAttacking() const;
 	bool IsDashing() const;
 	bool IsMeiDouActive() const;
+	// stunned by a failed MeiDou combo (can't act, takes no damage)
+	// TODO: maybe take damage you know
+	bool IsMeiDouFailed() const;
 	bool IsHitReacting() const { return bDamageReactionActive; }
 	bool IsDead() const;
 
-	// free to start a new action (jump, dash): nothing else is going on
+	// free to start a new action (jump, dash)
 	bool CanAct() const;
 
 	virtual void ResetForFlowRestart();
@@ -152,9 +114,6 @@ protected:
 	bool HasActiveIFrames() const;
 
 private:
-	// dead, reacting to a hit, stunned by a MeiDou fail or in the air: no action can start
+	// dead, reacting to a hit, stunned by a MeiDou fail or in the air
 	bool IsLocked() const;
-
-	// tells the anim instance whether to mirror the current MeiDou pose
-	void SetMirrorFlag(bool bShouldMirror) const;
 };

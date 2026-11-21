@@ -7,12 +7,14 @@
 #include "IA/EnemyMaidAIController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Spawners/EnemyWaveSpawner.h"
+#include "TimerManager.h"
 
 void ADemoGameMode::StartPlay()
 {
 	Super::StartPlay();
 
 	PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+	CameraManager = CastChecked<ADemoCameraManager>(PlayerController->PlayerCameraManager);
 	PlayerMaid = CastChecked<APlayerMaidCharacter>(PlayerController->GetPawn());
 	PlayerMaid->GetHealthComponent()->OnHealthDepleted.AddDynamic(this, &ADemoGameMode::HandlePlayerHealthDepleted);
 
@@ -22,11 +24,12 @@ void ADemoGameMode::StartPlay()
 	WaveSpawner->OnWaveCompleted.AddDynamic(this, &ADemoGameMode::HandleWaveCompleted);
 
 	SetFlowState(EFlowState::MainMenu);
+	CameraManager->SnapTo(MenuShot);
 }
 
 void ADemoGameMode::StartGame()
 {
-	// called from the main menu, or from Win / Lose to retry
+	// called from the main menu, or from Win/Lose to retry
 	const bool bRetry = FlowState != EFlowState::MainMenu;
 	if (bRetry)
 	{
@@ -35,8 +38,8 @@ void ADemoGameMode::StartGame()
 		WaveSpawner->ResetWave();
 	}
 
-	SetFlowState(EFlowState::Starting);
-	PlayerMaid->StartMenuCameraTransitionToGameplay();
+	StartTransition(EFlowState::Starting, GameplayBlendTime);
+	CameraManager->BlendToPawn(GameplayPitch, GameplayBlendTime);
 }
 
 void ADemoGameMode::TogglePause()
@@ -49,6 +52,12 @@ void ADemoGameMode::TogglePause()
 	{
 		SetFlowState(EFlowState::Playing);
 	}
+}
+
+void ADemoGameMode::StartTransition(const EFlowState TransitionState, const float BlendTime)
+{
+	SetFlowState(TransitionState);
+	GetWorldTimerManager().SetTimer(TransitionTimerHandle, this, &ADemoGameMode::FinishTransition, BlendTime);
 }
 
 void ADemoGameMode::FinishTransition()
@@ -120,10 +129,11 @@ void ADemoGameMode::SetAllEnemyAIEnabled() const
 void ADemoGameMode::HandleWaveCompleted()
 {
 	// the last enemy can despawn during the lose camera
+	// win montage + expression: BP_PlayerMaid on Winning
 	if (FlowState == EFlowState::Playing)
 	{
-		SetFlowState(EFlowState::Winning);
-		PlayerMaid->StartWinSequenceCameraTransition();
+		StartTransition(EFlowState::Winning, WinShot.BlendTime);
+		CameraManager->BlendTo(WinShot);
 	}
 }
 
@@ -136,8 +146,8 @@ void ADemoGameMode::HandlePlayerHealthDepleted(UHealthComponent* HealthComponent
 {
 	if (FlowState == EFlowState::Playing)
 	{
-		SetFlowState(EFlowState::Losing);
 		WaveSpawner->StopWave();
-		PlayerMaid->StartLoseSequenceCameraTransition();
+		StartTransition(EFlowState::Losing, LoseShot.BlendTime);
+		CameraManager->BlendTo(LoseShot);
 	}
 }

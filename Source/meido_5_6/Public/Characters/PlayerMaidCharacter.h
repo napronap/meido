@@ -103,9 +103,6 @@ protected:
 
 	void ToggleLockOn();
 	void OnLockOnSwitch(const FInputActionValue& Value);
-	void OnLockOnSwitchReleased(const FInputActionValue& Value);
-	void ApplyLockOnMovementMode(bool bLockOnActive);
-	void UpdateAnimLockOnState(bool bLockOnActive);
 
 	/*
 	 * Camera
@@ -115,14 +112,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere)
 	UCameraComponent* ViewCamera;
-
-	void RotateCameraToTarget(AActor* Target, float DeltaTime);
-
-	bool bWasLockOnActive = false;
-
-	// how fast lockon camera yaw follows target
-	UPROPERTY(EditAnywhere, Category="Camera|LockOn", meta=(ClampMin="0.1", ClampMax="30.0"))
-	float LockOnCameraYawInterpSpeed = 8.f;
 
 	// ALL these variables are here for fast iteration. They are related to the transition between mainmenu/play state
 	// will probably remove all this and come up with a proper system in the future

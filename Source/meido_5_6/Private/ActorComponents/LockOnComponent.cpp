@@ -4,7 +4,6 @@
 #include "ActorComponents/LockOnComponent.h"
 #include "Algo/MinElement.h"
 #include "AnimInstances/MaidAnimInstance.h"
-#include "Camera/PlayerCameraManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -139,16 +138,8 @@ void ULockOnComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// the target died or was destroyed
 	// attempt to lock on the next best one, or drop the lock
-	if (!IsTargetable(CurrentTarget) && !TryLockOn())
+	if (!IsTargetable(CurrentTarget))
 	{
-		return;
+		TryLockOn();
 	}
-
-	// TODO: move this behavior to PC
-	APlayerController* PC = CastChecked<APlayerController>(OwnerCharacter->GetController());
-	const FVector ToTarget = ITargetable::Execute_GetTargetLocation(CurrentTarget) - PC->PlayerCameraManager->GetCameraLocation();
-	const FRotator CurrentRotation = PC->GetControlRotation();
-	const FRotator DesiredRotation(CurrentRotation.Pitch, ToTarget.Rotation().Yaw, CurrentRotation.Roll);
-
-	PC->SetControlRotation(FMath::RInterpTo(CurrentRotation, DesiredRotation, DeltaTime, CameraYawInterpSpeed));
 }

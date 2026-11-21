@@ -16,8 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 
 // Player lockon: locks the on screen targetable closest to the screen center and switches left/right between
 // the onscreen ones
-// While locked it keeps the camera yaw on the target and the character strafes facing it
-// TODO: move the lock to the PC, this component should only broadcast its change
+// while locked the character strafes facing away from the camera, and AMaidPlayerController turns the camera yaw to the target
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class MEIDO_5_6_API ULockOnComponent : public UActorComponent
 {
@@ -46,7 +45,7 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnLockOnChanged OnLockOnChanged;
 
-	// only ticks while locked on: retargets when the target is lost and keeps the camera yaw on it
+	// only ticks while locked on: retargets when the target is lost
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -71,10 +70,6 @@ private:
 
 	UPROPERTY(EditAnywhere)
 	float SearchRadius = 1200.f;
-
-	// how fast the camera yaw follows the target
-	UPROPERTY(EditAnywhere, meta=(ClampMin="0.1", ClampMax="30.0"))
-	float CameraYawInterpSpeed = 8.f;
 
 	UPROPERTY()
 	TObjectPtr<ACharacter> OwnerCharacter;

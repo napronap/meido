@@ -28,17 +28,15 @@ public:
 		AActor* DamageCauser
 	) override;
 
-	// movement/combat actions (player or AI)
+	// movement/combat actions (player or AI), each one gates itself
 	void DoMove(float Right, float Forward);
 	void DoStartComboAttack();
 	bool DoDash(const FVector2D& MoveInput = FVector2D::ZeroVector, bool bLockOnActive = false);
+	virtual void Jump() override;
+	void RegisterMeiDouInput(EMeiDouInput Input);
 
 protected:
 	virtual void BeginPlay() override;
-
-	// movement (maybe put camera in player maid class because AI maid won't use it
-	void DoLook(float Yaw, float Pitch);
-	virtual void Jump() override;
 
 	// Combat
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
@@ -58,8 +56,6 @@ protected:
 	// created by APlayerMaidCharacter (null on enemies)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")
 	TObjectPtr<UMeiDouComponent> MeiDouComponent;
-	
-	void RegisterMeiDouInput(EMeiDouInput Input);
 
 	// Damage receiving
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Damage")

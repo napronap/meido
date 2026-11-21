@@ -120,12 +120,6 @@ void AMaidCharacter::Jump()
 	}
 }
 
-void AMaidCharacter::DoLook(float Yaw, float Pitch)
-{
-	AddControllerPitchInput(Pitch);
-	AddControllerYawInput(Yaw);
-}
-
 bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 {
 	// enemies have no dash component

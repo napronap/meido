@@ -3,15 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "InputActionValue.h"
 #include "MaidCharacter.h"
 #include "PlayerMaidCharacter.generated.h"
 
-class UInputAction;
 class USpringArmComponent;
 class UCameraComponent;
 class ULockOnComponent;
 
+// the AMaidCharacter actions plus dash, MeiDou, lockon and a camera boom
 UCLASS()
 class MEIDO_5_6_API APlayerMaidCharacter : public AMaidCharacter
 {
@@ -26,67 +25,9 @@ public:
 	ULockOnComponent* GetLockOnComponent() const { return LockOnComponent; }
 
 protected:
-	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LockOn")
 	TObjectPtr<ULockOnComponent> LockOnComponent;
 
-	/*
-	 * Input Actions
-	 */
-	UPROPERTY(EditAnywhere, Category="Input|Movement")
-	UInputAction* MovementAction;
-
-	UPROPERTY(EditAnywhere, Category="Input|Movement")
-	UInputAction* LookAction;
-
-	UPROPERTY(EditAnywhere, Category="Input|Movement")
-	UInputAction* JumpAction;
-
-	UPROPERTY(EditAnywhere, Category="Input|Movement")
-	UInputAction* DashAction;
-
-	UPROPERTY(EditAnywhere, Category="Input|Combat")
-	UInputAction* ComboAttackAction;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
-	UInputAction* MeiDouMAction;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
-	UInputAction* MeiDouKAction;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|MeiDou")
-	UInputAction* MeiDouNAction;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|LockOn")
-	UInputAction* LockOnInputAction;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|LockOn")
-	UInputAction* ChangeLockOnInputAction;
-
-	/*
-	 * Input callbacks
-	 */
-	void Move(const FInputActionValue& Value);
-	void MoveReleased();
-	void Look(const FInputActionValue& Value);
-
-	void JumpPressed();
-	void JumpReleased();
-	void DashPressed();
-
-	void ComboAttackPressed();
-
-	void InputMeiDouM();
-	void InputMeiDouK();
-	void InputMeiDouN();
-
-	void ToggleLockOn();
-	void OnLockOnSwitch(const FInputActionValue& Value);
-
-	/*
-	 * Camera
-	 */
 	UPROPERTY(VisibleAnywhere)
 	USpringArmComponent* CameraBoom;
 
@@ -96,6 +37,4 @@ protected:
 	// played on retry (ResetForFlowRestart)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Flow")
 	UAnimMontage* GetUpMontage = nullptr;
-
-	FVector2D CachedMoveInput = FVector2D::ZeroVector;
 };

@@ -88,6 +88,7 @@ protected:
 	 * Input callbacks
 	 */
 	void Move(const FInputActionValue& Value);
+	void MoveReleased();
 	void Look(const FInputActionValue& Value);
 
 	void JumpPressed();

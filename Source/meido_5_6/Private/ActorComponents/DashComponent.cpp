@@ -2,205 +2,89 @@
 
 
 #include "ActorComponents/DashComponent.h"
-#include "AnimInstances/MaidAnimInstance.h"
-#include "Characters/MaidCharacter.h"
+#include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Kismet/KismetMathLibrary.h"
 
-// Sets default values for this component's properties
 UDashComponent::UDashComponent()
 {
-	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bCanEverTick = false;
+
+	OnDashMontageBlendingOut.BindUObject(this, &UDashComponent::HandleDashMontageBlendingOut);
 }
 
-
-// Called when the game starts
 void UDashComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	OwnerMaid = Cast<AMaidCharacter>(GetOwner());
-	if (OwnerMaid.IsValid())
-	{
-		MovementComponent = OwnerMaid->GetCharacterMovement();
-	}
+	OwnerCharacter = CastChecked<ACharacter>(GetOwner());
 }
 
-
-// Called every frame
-void UDashComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+bool UDashComponent::TryDash(const FVector2D& MoveInput, const FRotator& ControlRotation, const bool bLockOnActive)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	DashCooldownRemaining = FMath::Max(0.f, DashCooldownRemaining - DeltaTime);
-
-	if (!bIsDashing)
-	{
-		return;
-	}
-
-	if (!OwnerMaid.IsValid() || !MovementComponent.IsValid())
-	{
-		EndDash();
-		return;
-	}
-
-	DashTimeRemaining -= DeltaTime;
-	if (DashTimeRemaining <= 0.f)
-	{
-		EndDash();
-		return;
-	}
-
-	MovementComponent->Velocity = DashDirection * DashSpeed;
-}
-
-bool UDashComponent::TryDash(const FVector2D& MoveInput, const FRotator& ControlRotation, bool bLockOnActive)
-{
-	if (!CanDash())
+	if (bIsDashing)
 	{
 		return false;
 	}
 
-	FVector DashWorldDirection = FVector::ZeroVector;
-	FVector2D DashAnimDirection = FVector2D(0.f, 1.f);
+	const bool bHasInput = MoveInput.SizeSquared() >= FMath::Square(MinDirectionInput);
 
-	if (bLockOnActive)
+	// stick (X right, Y forward) to world, using the camera's yaw (a dash is basically always "forward" in terms of animation)
+	const FRotator Yaw(0.f, ControlRotation.Yaw, 0.f);
+	const FVector WorldDirection = Yaw.RotateVector(FVector(MoveInput.Y, MoveInput.X, 0.f)).GetSafeNormal();
+
+	// free movement: root motion goes where the character faces, so face the input
+	if (bHasInput && !bLockOnActive)
 	{
-		// Lockon: dash direction follows input
-		DashWorldDirection = ComputeDashWorldDirection(MoveInput, ControlRotation);
-		DashAnimDirection = ComputeDashAnimDirection(DashWorldDirection, ControlRotation);
-	}
-	else
-	{
-		// Non lockon mode: dash follows movement input, but character rotates to face dash direction (like normal movement)
-		DashWorldDirection = ComputeDashWorldDirection(MoveInput, ControlRotation);
-		if (DashWorldDirection.IsNearlyZero())
-		{
-			DashWorldDirection = OwnerMaid->GetActorForwardVector();
-			DashWorldDirection.Z = 0.f;
-			DashWorldDirection.Normalize();
-		}
-
-		if (!DashWorldDirection.IsNearlyZero())
-		{
-			const FRotator CurrentRotation = OwnerMaid->GetActorRotation();
-			const FRotator DashRotation(0.f, DashWorldDirection.Rotation().Yaw, 0.f);
-			OwnerMaid->SetActorRotation(FRotator(CurrentRotation.Pitch, DashRotation.Yaw, CurrentRotation.Roll));
-		}
-
-		DashAnimDirection = FVector2D(0.f, 1.f);
+		// very important!! set rotation so the character snaps to the input,
+		// otherwise the dash will get caught mid rotation and not launch on the intended direction 
+		OwnerCharacter->SetActorRotation(FRotator(0.f, WorldDirection.Rotation().Yaw, 0.f));
 	}
 
-	if (DashWorldDirection.IsNearlyZero())
-	{
-		return false;
-	}
+	UAnimMontage* Montage = PickMontage(WorldDirection, bHasInput, bLockOnActive);
 
-	StartDash(DashWorldDirection, DashAnimDirection);
+	bIsDashing = true;
+	OwnerCharacter->GetCharacterMovement()->StopMovementImmediately();
+
+	UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
+	AnimInstance->Montage_Play(Montage);
+	AnimInstance->Montage_SetBlendingOutDelegate(OnDashMontageBlendingOut, Montage);
+
 	return true;
 }
 
-void UDashComponent::CancelDash()
+UAnimMontage* UDashComponent::PickMontage(const FVector& WorldDirection, const bool bHasInput, const bool bLockOnActive) const
 {
-	if (!bIsDashing)
+	// dash back from facing direction if there's no input
+	if (!bHasInput)
 	{
-		return;
+		return BackwardMontage;
 	}
 
-	EndDash();
-}
-
-bool UDashComponent::CanDash() const
-{
-	// only internal conditions: the character already checked everything else in DoDash
-	return !bIsDashing && DashCooldownRemaining <= 0.f && OwnerMaid.IsValid() && MovementComponent.IsValid();
-}
-
-FVector UDashComponent::ComputeDashWorldDirection(const FVector2D& MoveInput, const FRotator& ControlRotation) const
-{
-	FVector2D DashInput = MoveInput;
-	if (DashInput.SizeSquared() < FMath::Square(MinDirectionInput))
+	// has input and no lockon: always forward
+	if (!bLockOnActive)
 	{
-		DashInput = FVector2D(0.f, 1.f);
-	}
-	else
-	{
-		DashInput.Normalize();
+		return ForwardMontage;
 	}
 
-	const FRotator YawRotation(0.f, ControlRotation.Yaw, 0.f);
-	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+	// lockon keeps character facing the target (controller yaw)
+	// pick the montage from the relative input
+	// local direction (X forward, Y right)
+	const FVector LocalDirection = OwnerCharacter->GetActorTransform().InverseTransformVectorNoScale(WorldDirection);
 
-	FVector DashWorldDirection = (ForwardDirection * DashInput.Y) + (RightDirection * DashInput.X);
-	DashWorldDirection.Z = 0.f;
-	DashWorldDirection.Normalize();
-
-	return DashWorldDirection;
-}
-
-FVector2D UDashComponent::ComputeDashAnimDirection(const FVector& WorldDirection, const FRotator& ControlRotation) const
-{
-	const FRotator YawRotation(0.f, ControlRotation.Yaw, 0.f);
-	const FVector LocalDirection = UKismetMathLibrary::InverseTransformDirection(
-		FTransform(YawRotation, FVector::ZeroVector, FVector::OneVector),
-		WorldDirection
-	);
-
-	return FVector2D(
-		FMath::Clamp(LocalDirection.Y, -1.f, 1.f),
-		FMath::Clamp(LocalDirection.X, -1.f, 1.f)
-	);
-}
-
-void UDashComponent::StartDash(const FVector& InDashDirection, const FVector2D& AnimDirection)
-{
-	if (!OwnerMaid.IsValid() || !MovementComponent.IsValid())
+	// |x| >= |y| means the input is forwards leaning
+	if (FMath::Abs(LocalDirection.X) >= FMath::Abs(LocalDirection.Y))
 	{
-		return;
+		return LocalDirection.X >= 0.f ? ForwardMontage : BackwardMontage;
 	}
 
-	DashDirection = InDashDirection.GetSafeNormal2D();
-	DashTimeRemaining = DashDuration;
-	DashCooldownRemaining = DashCooldown;
-	bIsDashing = true;
-
-	MovementComponent->StopMovementImmediately();
-	UpdateDashAnimState(true, AnimDirection);
+	// if neither forwards nor backwards, then check |y| for horizontal direction
+	return LocalDirection.Y >= 0.f ? RightMontage : LeftMontage;
 }
 
-void UDashComponent::EndDash()
+void UDashComponent::HandleDashMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (!OwnerMaid.IsValid() || !MovementComponent.IsValid())
-	{
-		bIsDashing = false;
-		UpdateDashAnimState(false, FVector2D::ZeroVector);
-		return;
-	}
-
 	bIsDashing = false;
-	DashTimeRemaining = 0.f;
-	MovementComponent->StopMovementImmediately();
-	UpdateDashAnimState(false, FVector2D::ZeroVector);
+	OwnerCharacter->GetCharacterMovement()->StopMovementImmediately();
 }
-
-void UDashComponent::UpdateDashAnimState(bool bDashing, const FVector2D& AnimDirection) const
-{
-	if (!OwnerMaid.IsValid() || !OwnerMaid->GetMesh())
-	{
-		return;
-	}
-
-	UMaidAnimInstance* MaidAnimInstance = Cast<UMaidAnimInstance>(OwnerMaid->GetMesh()->GetAnimInstance());
-	if (!MaidAnimInstance)
-	{
-		return;
-	}
-
-	MaidAnimInstance->bIsDashing = bDashing;
-	MaidAnimInstance->DashRight = bDashing ? AnimDirection.X : 0.f;
-	MaidAnimInstance->DashForward = bDashing ? AnimDirection.Y : 0.f;
-}
-

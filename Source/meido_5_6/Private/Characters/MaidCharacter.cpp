@@ -220,11 +220,6 @@ void AMaidCharacter::PlayHitReaction()
 		AttackComponent->CloseHitWindow();
 	}
 
-	if (DashComponent)
-	{
-		DashComponent->CancelDash();
-	}
-
 	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
 	if (!AnimInstance)
 	{
@@ -275,11 +270,6 @@ void AMaidCharacter::Die()
 	if (AttackComponent)
 	{
 		AttackComponent->CloseHitWindow();
-	}
-
-	if (DashComponent)
-	{
-		DashComponent->CancelDash();
 	}
 
 	// stop controller driven yaw updates on dead bodies (dead maids were still rotating to character)
@@ -549,11 +539,6 @@ void AMaidCharacter::ResetForFlowRestart()
 	if (AttackComponent)
 	{
 		AttackComponent->CloseHitWindow();
-	}
-
-	if (DashComponent)
-	{
-		DashComponent->CancelDash();
 	}
 
 	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)

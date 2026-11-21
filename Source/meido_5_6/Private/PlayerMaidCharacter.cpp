@@ -392,6 +392,11 @@ void APlayerMaidCharacter::Move(const FInputActionValue& Value)
 	DoMove(MovementVector.X, MovementVector.Y);
 }
 
+void APlayerMaidCharacter::MoveReleased()
+{
+	CachedMoveInput = FVector2D::ZeroVector;
+}
+
 void APlayerMaidCharacter::Look(const FInputActionValue& Value)
 {
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
@@ -574,6 +579,7 @@ void APlayerMaidCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 	{
 		// movement related actions
 		EnhancedInputComponent->BindAction(MovementAction, ETriggerEvent::Triggered, this, &APlayerMaidCharacter::Move);
+		EnhancedInputComponent->BindAction(MovementAction, ETriggerEvent::Completed, this, &APlayerMaidCharacter::MoveReleased);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APlayerMaidCharacter::Look);
 
 		// combat related actions

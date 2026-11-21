@@ -121,7 +121,6 @@ void AMaidPlayerController::StartGameFromMenu()
 		if (BoundWaveSpawner)
 		{
 			BoundWaveSpawner->ResetWave();
-			BoundWaveSpawner->StartWave();
 		}
 
 		FInputModeGameOnly InputMode;
@@ -157,6 +156,12 @@ void AMaidPlayerController::CompleteStartGameFromMenu()
 
 	bWaitingForMenuCameraTransition = false;
 	EnterPlayingState();
+
+	// interim until E3: the GameMode will start the wave
+	if (BoundWaveSpawner)
+	{
+		BoundWaveSpawner->StartWave();
+	}
 }
 
 void AMaidPlayerController::CompleteWinSequence()

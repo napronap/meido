@@ -107,6 +107,9 @@ public:
 	// free to start a new action (jump, dash)
 	bool CanAct() const;
 
+	// for external listeners of OnHealthChanged/ OnHealthDepleted (GameMode)
+	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
+
 	virtual void ResetForFlowRestart();
 
 protected:

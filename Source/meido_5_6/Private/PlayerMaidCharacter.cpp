@@ -6,7 +6,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "ActorComponents/DashComponent.h"
 #include "ActorComponents/LockOnComponent.h"
-#include "PlayerControllers/MaidPlayerController.h"
+#include "GameModes/DemoGameMode.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -45,21 +45,11 @@ void APlayerMaidCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!bApplyMenuCameraPoseOnBeginPlay)
+	// the game always starts in the main menu
+	if (bApplyMenuCameraPoseOnBeginPlay)
 	{
-		return;
+		ApplyMenuCameraPose();
 	}
-
-	if (const AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
-	{
-		if (MaidPC->GetFlowState() == EFlowState::MainMenu)
-		{
-			ApplyMenuCameraPose();
-		}
-		return;
-	}
-
-	ApplyMenuCameraPose();
 }
 
 void APlayerMaidCharacter::ResetForFlowRestart()
@@ -185,10 +175,7 @@ void APlayerMaidCharacter::UpdateMenuCameraTransition(const float DeltaTime)
 	}
 
 	bMenuCameraTransitionActive = false;
-	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
-	{
-		MaidPC->CompleteStartGameFromMenu();
-	}
+	GetWorld()->GetAuthGameMode<ADemoGameMode>()->FinishTransition();
 }
 
 void APlayerMaidCharacter::StartWinSequenceCameraTransition()
@@ -287,10 +274,7 @@ void APlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
 	if (!LocalController || !CameraBoom)
 	{
 		bWinSequenceActive = false;
-		if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
-		{
-			MaidPC->CompleteWinSequence();
-		}
+		GetWorld()->GetAuthGameMode<ADemoGameMode>()->FinishTransition();
 		return;
 	}
 
@@ -313,10 +297,7 @@ void APlayerMaidCharacter::UpdateWinSequenceTransition(const float DeltaTime)
 	}
 
 	bWinSequenceActive = false;
-	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
-	{
-		MaidPC->CompleteWinSequence();
-	}
+	GetWorld()->GetAuthGameMode<ADemoGameMode>()->FinishTransition();
 }
 
 void APlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
@@ -335,10 +316,7 @@ void APlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
 	if (!LocalController || !CameraBoom)
 	{
 		bLoseSequenceActive = false;
-		if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(GetController()))
-		{
-			MaidPC->CompleteLoseSequence();
-		}
+		GetWorld()->GetAuthGameMode<ADemoGameMode>()->FinishTransition();
 		return;
 	}
 
@@ -361,10 +339,7 @@ void APlayerMaidCharacter::UpdateLoseSequenceTransition(const float DeltaTime)
 	}
 
 	bLoseSequenceActive = false;
-	if (AMaidPlayerController* MaidPC = Cast<AMaidPlayerController>(LocalController))
-	{
-		MaidPC->CompleteLoseSequence();
-	}
+	GetWorld()->GetAuthGameMode<ADemoGameMode>()->FinishTransition();
 }
 
 

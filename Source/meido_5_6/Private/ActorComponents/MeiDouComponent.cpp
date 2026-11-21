@@ -10,7 +10,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Interfaces/MeiDouSpawnConfigurable.h"
+#include "MeiDouResults/MeiDouResult.h"
 #include "TimerManager.h"
 
 UMeiDouComponent::UMeiDouComponent()
@@ -68,7 +68,7 @@ void UMeiDouComponent::PlayPose(const EMeiDouInput Input)
 
 void UMeiDouComponent::Resolve()
 {
-	// searches for enum combinations i.e 001 == MMK
+	// searches for enum combinations e.g 001 == MMK
 	const FMeiDouCombo* Combo = ComboData->Combos.FindByPredicate(
 		[this](const FMeiDouCombo& Candidate) { return Candidate.Inputs == ComboInputBuffer; });
 
@@ -154,8 +154,13 @@ void UMeiDouComponent::HandleAnimEvent(const EMeiDouAnimEvent Event, const UAnim
 void UMeiDouComponent::EndAction()
 {
 	AttackComponent->CloseHitWindow();
-	// TODO: arguably spawned actor should clean up on its own
-	CleanupSpawnedResultActor();
+	
+	if (AMeiDouResult* Result = SpawnedResult.Get())
+	{
+		Result->OnResultEnded();
+	}
+	SpawnedResult.Reset();
+
 	ResetCombo();
 	ActiveCombo = FMeiDouCombo();
 	State = EMeiDouState::EMDS_Idle;
@@ -226,70 +231,29 @@ void UMeiDouComponent::SetMirrorFlag(const bool bShouldMirror) const
 	CastChecked<UMaidAnimInstance>(OwnerCharacter->GetMesh()->GetAnimInstance())->bShouldMirror = bShouldMirror;
 }
 
-// TODO: fix the spawn logic
 void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 {
-	AActor* TargetActor = nullptr;
-	const FVector SpawnLocation = GetSpawnLocationForConfig(SpawnConfig, TargetActor);
-	const FVector EndLocation = TargetActor
-		? TargetActor->GetActorLocation()
+	AActor* Target = LockOnComponent->IsLockedOn() ? LockOnComponent->GetCurrentTarget() : nullptr;
+	const FVector TargetLocation = Target
+		? Target->GetActorLocation()
 		: OwnerCharacter->GetActorLocation() + OwnerCharacter->GetActorForwardVector() * SpawnConfig.ForwardDistanceIfNoTarget;
+
+	// on the target (bomb) or on a socket of the caster (beam)
+	const FVector SpawnLocation = SpawnConfig.SpawnLocation == EMeiDouResultSpawnLocation::EMDRSL_Target
+		? TargetLocation
+		: OwnerCharacter->GetMesh()->GetSocketLocation(SpawnConfig.EmittingActorSocketName) + SpawnConfig.SpawnOffset;
 	const FTransform SpawnTransform(OwnerCharacter->GetActorRotation(), SpawnLocation);
 
-	AActor* SpawnedActor = GetWorld()->SpawnActorDeferred<AActor>(
+	// deferred so Target is already set when the result runs its BeginPlay
+	AMeiDouResult* Result = GetWorld()->SpawnActorDeferred<AMeiDouResult>(
 		SpawnConfig.SpawnedActorClass,
 		SpawnTransform,
 		OwnerCharacter,
 		OwnerCharacter,
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn
 	);
+	Result->Target = Target;
+	Result->FinishSpawning(SpawnTransform);
 
-	if (SpawnedActor->GetClass()->ImplementsInterface(UMeiDouSpawnConfigurable::StaticClass()))
-	{
-		IMeiDouSpawnConfigurable::Execute_ConfigureMeiDouSpawn(
-			SpawnedActor,
-			OwnerCharacter,
-			TargetActor,
-			EndLocation,
-			TargetActor != nullptr
-		);
-	}
-
-	SpawnedActor->FinishSpawning(SpawnTransform);
-
-	SpawnedResultActor = SpawnedActor;
-	bDestroySpawnedResultActorOnActionEnd = SpawnConfig.bDestroyWhenPoseActiveEnds;
-}
-
-FVector UMeiDouComponent::GetSpawnLocationForConfig(const FMeiDouSpawnConfig& SpawnConfig, AActor*& OutTargetActor) const
-{
-	OutTargetActor = LockOnComponent->IsLockedOn() ? LockOnComponent->GetCurrentTarget() : nullptr;
-
-	if (SpawnConfig.SpawnLocation == EMeiDouResultSpawnLocation::EMDRSL_Target)
-	{
-		return OutTargetActor
-			? OutTargetActor->GetActorLocation()
-			: OwnerCharacter->GetActorLocation() + OwnerCharacter->GetActorForwardVector() * SpawnConfig.ForwardDistanceIfNoTarget;
-	}
-
-	return OwnerCharacter->GetMesh()->GetSocketLocation(SpawnConfig.EmittingActorSocketName) + SpawnConfig.SpawnOffset;
-}
-
-void UMeiDouComponent::CleanupSpawnedResultActor()
-{
-	if (AActor* SpawnedActor = SpawnedResultActor.Get())
-	{
-		if (SpawnedActor->GetClass()->ImplementsInterface(UMeiDouSpawnConfigurable::StaticClass()))
-		{
-			IMeiDouSpawnConfigurable::Execute_OnMeiDouActionEnded(SpawnedActor);
-		}
-
-		if (bDestroySpawnedResultActorOnActionEnd)
-		{
-			SpawnedActor->Destroy();
-		}
-	}
-
-	SpawnedResultActor.Reset();
-	bDestroySpawnedResultActorOnActionEnd = false;
+	SpawnedResult = Result;
 }

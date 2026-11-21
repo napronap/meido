@@ -10,6 +10,7 @@
 #include "MeiDouComponent.generated.h"
 
 class ACharacter;
+class AMeiDouResult;
 class UAnimMontage;
 class UAnimSequenceBase;
 class UAttackComponent;
@@ -22,7 +23,7 @@ class ULockOnComponent;
 //  resolve -> result montage (Spawn / TraceStart / TraceEnd events) -> ActionEnd: back to idle
 //          -> no match: fail montage ("stunned" until it blends out)
 //
-// Flow is the same as attacks: input -> AMaidCharacter::RegisterMeiDouInput (gates) -> RegisterInput (internal checks only)
+// Flow is the same as attacks: input -> AMaidCharacter (gates) -> RegisterInput (internal checks only) -> AC
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class MEIDO_5_6_API UMeiDouComponent : public UActorComponent
 {
@@ -56,8 +57,6 @@ private:
 	void SetMirrorFlag(bool bShouldMirror) const;
 
 	void ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig);
-	FVector GetSpawnLocationForConfig(const FMeiDouSpawnConfig& SpawnConfig, AActor*& OutTargetActor) const;
-	void CleanupSpawnedResultActor();
 
 	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	TObjectPtr<UMeiDouComboData> ComboData;
@@ -65,7 +64,7 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	TObjectPtr<UMeiDouPoseSet> PoseSet;
 
-	// a partial combo (1 or 2 poses) is dropped after this long without input
+	// a partial combo (1 or 2 poses) is dropped after this long without a new input
 	UPROPERTY(EditDefaultsOnly, Category="MeiDou")
 	float ComboInputTimeoutSeconds = 2.f;
 
@@ -102,6 +101,6 @@ private:
 
 	FTimerHandle ComboInputTimeoutHandle;
 
-	TWeakObjectPtr<AActor> SpawnedResultActor;
-	bool bDestroySpawnedResultActorOnActionEnd = false;
+	// actor spawned by the playing result, told when the result ends
+	TWeakObjectPtr<AMeiDouResult> SpawnedResult;
 };

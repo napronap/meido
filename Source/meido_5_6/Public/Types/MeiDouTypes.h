@@ -3,16 +3,19 @@
 #include "CoreMinimal.h"
 #include "MeiDouTypes.generated.h"
 
-class AActor;
+class AMeiDouResult;
 
 // what the MeiDou component is doing
 UENUM(BlueprintType)
 enum class EMeiDouState : uint8
 {
-	// free (a partial combo may be waiting for its next input)
+	// free (no montages running)
 	EMDS_Idle	UMETA(DisplayName = "Idle"),
+	// running a pose (MKN)
 	EMDS_Posing UMETA(DisplayName = "Posing"),
+	// running a result (oishikunare, etc)
 	EMDS_Result UMETA(DisplayName = "Result"),
+	// running the failed result montage
 	EMDS_Failed UMETA(DisplayName = "Failed"),
 };
 
@@ -65,7 +68,7 @@ struct FMeiDouSpawnConfig
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	TSubclassOf<AActor> SpawnedActorClass = nullptr;
+	TSubclassOf<AMeiDouResult> SpawnedActorClass = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	EMeiDouResultSpawnLocation SpawnLocation = EMeiDouResultSpawnLocation::EMDRSL_Target;
@@ -78,8 +81,4 @@ struct FMeiDouSpawnConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(EditCondition="SpawnLocation == EMeiDouResultSpawnLocation::EMDRSL_EmittingActor"))
 	FVector SpawnOffset = FVector::ZeroVector;
-
-	// If true, this spawned actor will be told to end and optionally destroyed when PoseActive notify state ends.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	bool bDestroyWhenPoseActiveEnds = false;
 };

@@ -2,182 +2,104 @@
 
 
 #include "MeiDouResults/OmuriceBomb.h"
+#include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
-#include "GameFramework/DamageType.h"
+#include "Engine/OverlapResult.h"
+#include "Engine/World.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Particles/ParticleSystem.h"
-#include "Sound/SoundBase.h"
 #include "Subsystems/CombatFeedbackSubsystem.h"
 
 AOmuriceBomb::AOmuriceBomb()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
+
+	// only static geometry stops it and goes through characters
+	Collision = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
+	Collision->InitSphereRadius(20.f);
+	Collision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Collision->SetCollisionObjectType(ECC_WorldDynamic);
+	Collision->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Collision->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+
+	SetRootComponent(Collision);
 
 	BombMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BombMesh"));
-	SetRootComponent(BombMesh);
-	// Movement/impact detection is trace-driven (see Tick), so mesh collision is disabled
+	BombMesh->SetupAttachment(Collision);
+	// very important !! so that the omelette goes past everyone
 	BombMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BombMesh->SetGenerateOverlapEvents(false);
+
+	Movement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Movement"));
+	Movement->InitialSpeed = 0.f;
+	Movement->bShouldBounce = false;
+	// ~1 s from InitialHeightOffset (1800) with this scale
+	Movement->ProjectileGravityScale = 3.5f;
 }
 
 void AOmuriceBomb::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Spawn point usually comes from combo target. This offset makes the bomb start from the sky.
-	if (InitialHeightOffset > 0.f)
-	{
-		AddActorWorldOffset(FVector(0.f, 0.f, InitialHeightOffset), false);
-	}
+	// MeiDouComponent already sets the target so the location here is 0,0 and the height
+	AddActorWorldOffset(FVector(0.f, 0.f, InitialHeightOffset));
+
+	Movement->OnProjectileStop.AddDynamic(this, &AOmuriceBomb::HandleImpact);
 }
 
-// TODO: probably rely on gravity? it was easier to do the whole ignoring like this
-void AOmuriceBomb::Tick(float DeltaTime)
+void AOmuriceBomb::HandleImpact(const FHitResult& ImpactResult)
 {
-	Super::Tick(DeltaTime);
-
-	if (bHasImpacted || FallSpeed <= 0.f)
-	{
-		return;
-	}
-
 	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	const FVector Start = GetActorLocation();
-	const FVector FallStep(0.f, 0.f, -FallSpeed * DeltaTime);
-	const FVector End = Start + FallStep;
-
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(OmuriceBombFallTrace), false, this);
-	QueryParams.AddIgnoredActor(this);
-	if (AActor* OwnerActor = GetOwner())
-	{
-		QueryParams.AddIgnoredActor(OwnerActor);
-	}
+	const FVector ImpactLocation = GetActorLocation();
+	APawn* Caster = GetInstigator();
 	
-	// bomb ignores everything but ground hit (GroundOnly)
-	FHitResult GroundHit;
-	const bool bHitGround = World->LineTraceSingleByChannel(
-		GroundHit,
-		Start,
-		End,
-		GroundTraceChannel,
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(OmuriceBombImpact), false, this);
+	QueryParams.AddIgnoredActor(Caster);
+
+	TArray<FOverlapResult> Overlaps;
+	// same comment as the AttackComponent, it's by object Pawn but should consider otherwise
+	World->OverlapMultiByObjectType(
+		Overlaps,
+		ImpactLocation,
+		FQuat::Identity,
+		ECC_Pawn,
+		FCollisionShape::MakeSphere(ImpactRadius),
 		QueryParams
 	);
 
-	if (bHitGround && GroundHit.ImpactNormal.Z >= GroundImpactMinNormalZ)
+	UCombatFeedbackSubsystem* CombatFeedback = World->GetSubsystem<UCombatFeedbackSubsystem>();
+	TSet<AActor*> DamagedActors;
+	for (const FOverlapResult& Overlap : Overlaps)
 	{
-		const FVector GroundOffset = GroundHit.ImpactNormal * 2.f;
-		SetActorLocation(GroundHit.ImpactPoint + GroundOffset, false);
-		HandleImpact();
-		return;
-	}
-
-	// No valid impact this frame, keep falling
-	SetActorLocation(End, false);
-}
-
-void AOmuriceBomb::HandleImpact()
-{
-	if (bHasImpacted)
-	{
-		return;
-	}
-
-	bHasImpacted = true;
-
-	if (UWorld* World = GetWorld())
-	{
-		TArray<AActor*> IgnoredActors;
-		IgnoredActors.Add(this);
-		if (AActor* OwnerActor = GetOwner())
+		AActor* HitActor = Overlap.GetActor();
+		if (DamagedActors.Contains(HitActor))
 		{
-			IgnoredActors.Add(OwnerActor);
+			continue;
 		}
 
-		UGameplayStatics::ApplyRadialDamage(
-			World,
+		const float AppliedDamage = UGameplayStatics::ApplyDamage(
+			HitActor,
 			ImpactDamage,
-			GetActorLocation(),
-			ImpactRadius,
-			UDamageType::StaticClass(),
-			IgnoredActors,
-			this,
 			GetInstigatorController(),
-			true,
-			ECC_MAX
+			this,
+			nullptr
 		);
 
-		UCombatFeedbackSubsystem* CombatFeedback = World->GetSubsystem<UCombatFeedbackSubsystem>();
-		if (bApplyImpactHitStop && CombatFeedback)
+		if (AppliedDamage > 0.f)
 		{
-			if (AActor* OwnerActor = GetOwner(); OwnerActor && bApplyImpactHitStopToOwner)
-			{
-				CombatFeedback->ApplyHitStop(OwnerActor, ImpactHitStopDuration, ImpactHitStopTimeDilation);
-			}
-
-			TArray<FOverlapResult> OverlapResults;
-			FCollisionObjectQueryParams ObjectQueryParams;
-			ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
-
-			FCollisionQueryParams OverlapQueryParams(SCENE_QUERY_STAT(OmuriceBombHitStopOverlap), false, this);
-			OverlapQueryParams.AddIgnoredActor(this);
-			if (AActor* OwnerActor = GetOwner())
-			{
-				OverlapQueryParams.AddIgnoredActor(OwnerActor);
-			}
-
-			if (World->OverlapMultiByObjectType(
-				OverlapResults,
-				GetActorLocation(),
-				FQuat::Identity,
-				ObjectQueryParams,
-				FCollisionShape::MakeSphere(ImpactRadius),
-				OverlapQueryParams
-			))
-			{
-				TSet<AActor*> ProcessedActors;
-				for (const FOverlapResult& Overlap : OverlapResults)
-				{
-					AActor* HitActor = Overlap.GetActor();
-					if (!HitActor || ProcessedActors.Contains(HitActor))
-					{
-						continue;
-					}
-
-					ProcessedActors.Add(HitActor);
-					CombatFeedback->ApplyHitStop(HitActor, ImpactHitStopDuration, ImpactHitStopTimeDilation);
-				}
-			}
-		}
-
-		if (ImpactVFX)
-		{
-			UGameplayStatics::SpawnEmitterAtLocation(World, ImpactVFX, GetActorTransform());
-		}
-
-		if (ImpactSFX)
-		{
-			UGameplayStatics::PlaySoundAtLocation(World, ImpactSFX, GetActorLocation());
-		}
-
-		if (bDrawImpactDebug)
-		{
-			DrawDebugSphere(
-				World,
-				GetActorLocation(),
-				ImpactRadius,
-				24,
-				FColor::Orange,
-				false,
-				1.5f
-			);
+			DamagedActors.Add(HitActor);
+			CombatFeedback->ApplyHitStop(HitActor, ImpactHitStopDuration);
 		}
 	}
+
+	if (DamagedActors.Num() > 0)
+	{
+		CombatFeedback->ApplyHitStop(Caster, ImpactHitStopDuration);
+	}
+	
+	DrawDebugSphere(World, ImpactLocation, ImpactRadius, 24, FColor::Orange, false, 1.5f);
 
 	SetActorEnableCollision(false);
 	SetLifeSpan(DestroyDelay);

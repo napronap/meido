@@ -34,7 +34,8 @@ public:
 	UAttackComponent();
 	
 	// starts the combo, or queues the next step while one is playing (ignored while recovering)
-	void RequestAttack();
+	// the step turns the owner to AimDirection when it starts (zero keeps the current facing)
+	void RequestAttack(const FVector& AimDirection);
 
 	// true from the first step until the last played step's montage ends (recovery included)
 	bool IsAttacking() const { return CurrentStep != INDEX_NONE; }
@@ -81,6 +82,8 @@ private:
 	int32 CurrentStep = INDEX_NONE;
 	bool bAttackQueued = false;
 	bool bRecovering = false;
+	// of the step being started or queued
+	FVector AimDirection = FVector::ZeroVector;
 	FOnMontageBlendingOutStarted HandleStepMontageBlendingOut;
 
 	// hit window

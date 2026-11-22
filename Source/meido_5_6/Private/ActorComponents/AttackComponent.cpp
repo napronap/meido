@@ -25,22 +25,25 @@ void UAttackComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// players and enemies
 	OwnerCharacter = CastChecked<ACharacter>(GetOwner());
 }
 
-void UAttackComponent::RequestAttack()
+void UAttackComponent::RequestAttack(const FVector& InAimDirection)
 {
 	// not attacking will most likely mean I'm idle (MaidCharacter already approved)
 	if (!IsAttacking())
 	{
+		AimDirection = InAimDirection;
 		PlayStep(0);
 		return;
 	}
 
-	// attacking + can still chain (didn't hit recovery) 
+	// attacking + can still chain (didn't hit recovery)
 	if (!bRecovering)
 	{
 		bAttackQueued = true;
+		AimDirection = InAimDirection;
 	}
 }
 
@@ -86,6 +89,13 @@ void UAttackComponent::PlayStep(const int32 StepIndex)
 
 	UAnimMontage* Montage = ComboData->Steps[StepIndex].Montage;
 	UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
+
+	// snaps before the montage so its root motion already goes that way
+	if (!AimDirection.IsNearlyZero())
+	{
+		OwnerCharacter->SetActorRotation(FRotator(0.f, AimDirection.Rotation().Yaw, 0.f));
+	}
+
 	AnimInstance->Montage_Play(Montage);
 	AnimInstance->Montage_SetBlendingOutDelegate(HandleStepMontageBlendingOut, Montage);
 }

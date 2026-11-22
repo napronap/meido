@@ -30,7 +30,8 @@ public:
 
 	// movement/combat actions (player or AI), each one gates itself
 	void DoMove(float Right, float Forward);
-	void DoStartComboAttack();
+	// AimInput is the move input, not camera input !!
+	void DoStartComboAttack(const FVector2D& AimInput = FVector2D::ZeroVector);
 	bool DoDash(const FVector2D& MoveInput = FVector2D::ZeroVector, bool bLockOnActive = false);
 	virtual void Jump() override;
 	void RegisterMeiDouInput(EMeiDouInput Input);

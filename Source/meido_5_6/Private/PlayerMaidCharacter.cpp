@@ -24,11 +24,14 @@ APlayerMaidCharacter::APlayerMaidCharacter()
 	CameraBoom->SetupAttachment(GetRootComponent());
 	CameraBoom->TargetArmLength = 300.0f;
 	CameraBoom->bUsePawnControlRotation = true;
+	// spring arm's rotation NEEDS to be absolute so it doesn't conflict with the camera manager and manual rotations
+	// that dash and attack component do
+	CameraBoom->SetUsingAbsoluteRotation(true);
 
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ViewCamera"));
 	ViewCamera->SetupAttachment(CameraBoom);
 
-	// player-only gameplay components (pointers for Dash/MeiDou live in AMaidCharacter for now)
+	// player only gameplay components (pointers for Dash/MeiDou live in AMaidCharacter for now)
 	DashComponent = CreateDefaultSubobject<UDashComponent>(TEXT("DashComponent"));
 	MeiDouComponent = CreateDefaultSubobject<UMeiDouComponent>(TEXT("MeiDouComponent"));
 	LockOnComponent = CreateDefaultSubobject<ULockOnComponent>(TEXT("LockOnComponent"));

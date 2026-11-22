@@ -145,7 +145,7 @@ bool AMaidCharacter::DoDash(const FVector2D& MoveInput, bool bLockOnActive)
 	return true;
 }
 
-void AMaidCharacter::DoStartComboAttack()
+void AMaidCharacter::DoStartComboAttack(const FVector2D& AimInput)
 {
 	// attacking is allowed: AttackComponent queues the next step itself
 	if (IsLocked() || IsDashing() || IsMeiDouActive())
@@ -153,7 +153,9 @@ void AMaidCharacter::DoStartComboAttack()
 		return;
 	}
 
-	AttackComponent->RequestAttack();
+	// X is forward in UE, the stick's Y is forward
+	const FRotator YawRotation(0.f, GetControlRotation().Yaw, 0.f);
+	AttackComponent->RequestAttack(YawRotation.RotateVector(FVector(AimInput.Y, AimInput.X, 0.f)).GetSafeNormal());
 }
 
 void AMaidCharacter::DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted)

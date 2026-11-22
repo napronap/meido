@@ -11,9 +11,7 @@ class APlayerMaidCharacter;
 class UPlayerInputConfig;
 
 // All the player input: routes each action to the maid's API (the maid gates it, its components run it)
-// Also owns the camera rotation: look input, and the yaw following the lock-on target
-// Works with any game mode; each mode's own input (pause, debug AI toggle) lives in its subclass
-// (ADemoPlayerController, ASandboxPlayerController)
+// Also owns the camera rotation: look input, and the yaw following the lockon target
 UCLASS()
 class MEIDO_5_6_API AMaidPlayerController : public APlayerController
 {
@@ -52,6 +50,6 @@ private:
 	UPROPERTY()
 	TObjectPtr<APlayerMaidCharacter> PlayerMaid;
 
-	// last move input, the dash goes that way
+	// last move input, the dash goes that way and the attack aims there
 	FVector2D MoveInput = FVector2D::ZeroVector;
 };

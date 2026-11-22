@@ -97,7 +97,9 @@ void AMaidPlayerController::Dash()
 
 void AMaidPlayerController::Attack()
 {
-	PlayerMaid->DoStartComboAttack();
+	// locked on the maid already faces the target (controller yaw), so the stick doesn't aim
+	const bool bLockedOn = PlayerMaid->GetLockOnComponent()->IsLockedOn();
+	PlayerMaid->DoStartComboAttack(bLockedOn ? FVector2D::ZeroVector : MoveInput);
 }
 
 void AMaidPlayerController::MeiDouMoe()

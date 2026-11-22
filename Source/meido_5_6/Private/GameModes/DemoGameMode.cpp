@@ -33,13 +33,12 @@ void ADemoGameMode::StartPlay()
 
 void ADemoGameMode::StartGame()
 {
-	// called from the main menu, or from Win/Lose to retry
+	// called from the main menu, or from Win/Lose/Paused to retry
 	const bool bRetry = FlowState != EFlowState::MainMenu;
 	if (bRetry)
 	{
-		// fresh player and wave, the camera goes to gameplay from where it is
 		PlayerMaid->ResetForFlowRestart();
-		WaveSpawner->ResetWave();
+		ClearWave();
 	}
 
 	StartTransition(EFlowState::Starting, GameplayBlendTime);
@@ -80,16 +79,21 @@ void ADemoGameMode::FinishTransition()
 
 	case EFlowState::Losing:
 		// the enemies still alive leave with the lose screen
-		WaveSpawner->ResetWave();
-		for (TActorIterator<AEnemyMaid> Enemy(GetWorld()); Enemy; ++Enemy)
-		{
-			Enemy->Destroy();
-		}
+		ClearWave();
 		SetFlowState(EFlowState::Lose);
 		return;
 
 	default:
 		return;
+	}
+}
+
+void ADemoGameMode::ClearWave() const
+{
+	WaveSpawner->ResetWave();
+	for (TActorIterator<AEnemyMaid> Enemy(GetWorld()); Enemy; ++Enemy)
+	{
+		Enemy->Destroy();
 	}
 }
 
@@ -103,10 +107,11 @@ void ADemoGameMode::SetFlowState(const EFlowState NewState)
 {
 	FlowState = NewState;
 
+	// pause if the player pauses, play if the player is playing, and 
+	// inverse playing if we are pausing
 	const bool bPaused = FlowState == EFlowState::Paused;
 	PlayerController->SetPause(bPaused);
 
-	// SetIgnore* stacks a counter: reset first so it's an absolute on / off
 	const bool bGameplayInput = FlowState == EFlowState::Playing;
 	PlayerController->ResetIgnoreMoveInput();
 	PlayerController->ResetIgnoreLookInput();

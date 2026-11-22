@@ -35,7 +35,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowStateChanged, EFlowState, New
 //  MainMenu --StartGame--> Starting --camera done--> Playing <--TogglePause--> Paused
 //  Playing --wave completed--> Winning --camera done--> Win
 //  Playing --player died--> Losing --camera done--> Lose
-//  Win/Lose --StartGame (retry)--> Starting
+//  Win/Lose/Paused --StartGame (retry)--> Starting
 //
 // player input only while Playing, enemy AI while Playing or Paused (and not frozen by K)
 // The transitions last as long as their camera blend (ADemoCameraManager, set by ADemoPlayerController)
@@ -50,7 +50,7 @@ public:
 	// after Super every actor already ran BeginPlay, guarantees the player is possessed and the HUD is listening
 	virtual void StartPlay() override;
 
-	// main menu Start and the Win/Lose retry buttons
+	// main menu Start and the Win/Lose/Pause retry buttons
 	UFUNCTION(BlueprintCallable, Category="Flow")
 	void StartGame();
 
@@ -72,6 +72,9 @@ private:
 
 	// Starting -> Playing, Winning -> Win, Losing -> Lose
 	void FinishTransition();
+
+	// stops the spawner and destroys the enemies still alive (lose screen, retry)
+	void ClearWave() const;
 
 	bool IsEnemyAIActive() const;
 	void SetAllEnemyAIEnabled() const;

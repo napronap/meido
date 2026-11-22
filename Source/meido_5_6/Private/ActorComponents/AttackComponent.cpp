@@ -87,7 +87,7 @@ void UAttackComponent::PlayStep(const int32 StepIndex)
 	bAttackQueued = false;
 	bRecovering = false;
 
-	UAnimMontage* Montage = ComboData->Steps[StepIndex].Montage;
+	const FAttackComboStep& Step = ComboData->Steps[StepIndex];
 	UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
 
 	// snaps before the montage so its root motion already goes that way
@@ -96,8 +96,8 @@ void UAttackComponent::PlayStep(const int32 StepIndex)
 		OwnerCharacter->SetActorRotation(FRotator(0.f, AimDirection.Rotation().Yaw, 0.f));
 	}
 
-	AnimInstance->Montage_Play(Montage);
-	AnimInstance->Montage_SetBlendingOutDelegate(HandleStepMontageBlendingOut, Montage);
+	AnimInstance->Montage_Play(Step.Montage, Step.PlayRate);
+	AnimInstance->Montage_SetBlendingOutDelegate(HandleStepMontageBlendingOut, Step.Montage);
 }
 
 void UAttackComponent::HandleStepMontageEnded(UAnimMontage* Montage, bool bInterrupted)

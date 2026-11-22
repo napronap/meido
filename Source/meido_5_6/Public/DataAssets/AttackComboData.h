@@ -48,6 +48,12 @@ struct FAttackComboStep
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FAttackHit Hit;
+
+	// with a MontageTimeStretchCurve in the montage the speed up (PlayRate > 1) goes where the curve is high,
+	// without it the whole montage would speed up constantly
+	// at 1 the curve is ignored. Enemy characters should always keep 1 since they share the same montages with the player
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0.1"))
+	float PlayRate = 1.f;
 };
 
 // Melee combo

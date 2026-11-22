@@ -11,14 +11,13 @@ AEnemyMaid::AEnemyMaid()
 {
 	AIControllerClass = AEnemyMaidAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
-	bUseControllerRotationYaw = true;
+	
+	GetCharacterMovement()->bUseRVOAvoidance = true;
+	GetCharacterMovement()->AvoidanceConsiderationRadius = 180.f;
 
-	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
-	{
-		MovementComponent->bOrientRotationToMovement = false;
-		MovementComponent->bUseRVOAvoidance = true;
-		MovementComponent->AvoidanceConsiderationRadius = 180.f;
-	}
+	// path following moves through acceleration (like player input) instead of setting velocity directly
+	// the ABP's ShouldMove needs GetCurrentAcceleration != 0 to enter Walk/Run
+	GetCharacterMovement()->GetNavMovementProperties()->bUseAccelerationForPaths = true;
 }
 
 FVector AEnemyMaid::GetTargetLocation_Implementation()

@@ -28,4 +28,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
 	bool CanBeTargeted() const;
+
+	// ULockOnComponent calls it on the old target with false and on the new one with true (marker)
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	void SetLockedOn(bool bLockedOn);
 };

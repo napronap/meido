@@ -31,9 +31,8 @@ bool ULockOnComponent::TryLockOn()
 		[](const FScreenTarget& Target) { return Target.ScreenOffset.SizeSquared(); });
 
 	const bool bLocked = Closest != nullptr;
-	CurrentTarget = bLocked ? Closest->Actor : nullptr;
+	SetTarget(bLocked ? Closest->Actor : nullptr);
 	ApplyLockOnState(bLocked);
-	OnLockOnChanged.Broadcast(CurrentTarget, bLocked);
 
 	// actually gates the tick
 	return bLocked;
@@ -41,9 +40,8 @@ bool ULockOnComponent::TryLockOn()
 
 void ULockOnComponent::ClearLockOn()
 {
-	CurrentTarget = nullptr;
+	SetTarget(nullptr);
 	ApplyLockOnState(false);
-	OnLockOnChanged.Broadcast(nullptr, false);
 }
 
 void ULockOnComponent::SwitchTarget(const int32 Direction)
@@ -64,8 +62,7 @@ void ULockOnComponent::SwitchTarget(const int32 Direction)
 	AActor* NextTarget = Targets[(CurrentIndex + Direction + Targets.Num()) % Targets.Num()].Actor;
 	if (NextTarget != CurrentTarget)
 	{
-		CurrentTarget = NextTarget;
-		OnLockOnChanged.Broadcast(CurrentTarget, true);
+		SetTarget(NextTarget);
 	}
 }
 
@@ -119,6 +116,23 @@ TArray<ULockOnComponent::FScreenTarget> ULockOnComponent::GetOnScreenTargets() c
 bool ULockOnComponent::IsTargetable(AActor* Actor)
 {
 	return IsValid(Actor) && Actor->Implements<UTargetable>() && ITargetable::Execute_CanBeTargeted(Actor);
+}
+
+void ULockOnComponent::SetTarget(AActor* NewTarget)
+{
+	// TickComponent retargets when the old one is gone, so it can already be destroyed here
+	// IsValid returns false when the pointer is null or the actor called Destroy() so this is the simplest way to check 
+	if (IsValid(CurrentTarget))
+	{
+		ITargetable::Execute_SetLockedOn(CurrentTarget, false);
+	}
+
+	CurrentTarget = NewTarget;
+
+	if (CurrentTarget)
+	{
+		ITargetable::Execute_SetLockedOn(CurrentTarget, true);
+	}
 }
 
 void ULockOnComponent::ApplyLockOnState(const bool bLockedOn)

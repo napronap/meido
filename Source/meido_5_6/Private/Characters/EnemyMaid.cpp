@@ -3,7 +3,7 @@
 
 #include "Characters/EnemyMaid.h"
 #include "ActorComponents/HealthComponent.h"
-#include "Components/SkeletalMeshComponent.h"
+#include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "IA/EnemyMaidAIController.h"
 
@@ -18,16 +18,17 @@ AEnemyMaid::AEnemyMaid()
 	// path following moves through acceleration (like player input) instead of setting velocity directly
 	// the ABP's ShouldMove needs GetCurrentAcceleration != 0 to enter Walk/Run
 	GetCharacterMovement()->GetNavMovementProperties()->bUseAccelerationForPaths = true;
+
+	LockOnMarker = CreateDefaultSubobject<UWidgetComponent>(TEXT("LockOnMarker"));
+	LockOnMarker->SetupAttachment(GetRootComponent());
+	LockOnMarker->SetWidgetSpace(EWidgetSpace::Screen);
+	// shown by SetLockedOn
+	LockOnMarker->SetVisibility(false);
 }
 
 FVector AEnemyMaid::GetTargetLocation_Implementation()
 {
-	if (USkeletalMeshComponent* MeshComponent = GetMesh())
-	{
-		return MeshComponent->Bounds.Origin;
-	}
-
-	return GetActorLocation();
+	return LockOnMarker->GetComponentLocation();
 }
 
 bool AEnemyMaid::CanBeTargeted_Implementation() const
@@ -38,5 +39,11 @@ bool AEnemyMaid::CanBeTargeted_Implementation() const
 	}
 
 	return true;
+}
+
+void AEnemyMaid::SetLockedOn_Implementation(const bool bLockedOn)
+{
+	// a screen space widget is added to/removed from the screen with its component visibility
+	LockOnMarker->SetVisibility(bLockedOn);
 }
 

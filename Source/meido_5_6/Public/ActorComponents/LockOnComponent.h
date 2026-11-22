@@ -8,15 +8,10 @@
 
 class ACharacter;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
-	FOnLockOnChanged,
-	AActor*, NewTarget,
-	bool, bSuccess
-);
-
 // Player lockon: locks the on screen targetable closest to the screen center and switches left/right between
 // the onscreen ones
 // while locked the character strafes facing away from the camera, and AMaidPlayerController turns the camera yaw to the target
+// the target shows its own marker (ITargetable::SetLockedOn)
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class MEIDO_5_6_API ULockOnComponent : public UActorComponent
 {
@@ -34,16 +29,9 @@ public:
 	// +1 next on screen target to the right, -1 to the left
 	void SwitchTarget(int32 Direction);
 
-	// impure on purpose: BP_PlayerMaid calls both inside an exec chain (lockon marker)
-	// TODO: remove
-	UFUNCTION(BlueprintCallable, BlueprintPure=false)
 	bool IsLockedOn() const { return CurrentTarget != nullptr; }
 
-	UFUNCTION(BlueprintCallable, BlueprintPure=false)
 	AActor* GetCurrentTarget() const { return CurrentTarget; }
-
-	UPROPERTY(BlueprintAssignable)
-	FOnLockOnChanged OnLockOnChanged;
 
 	// only ticks while locked on: retargets when the target is lost
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
@@ -64,6 +52,9 @@ private:
 	TArray<FScreenTarget> GetOnScreenTargets() const;
 
 	static bool IsTargetable(AActor* Actor);
+
+	// moves the marker from the old target to the new one (either can be null)
+	void SetTarget(AActor* NewTarget);
 
 	// owner rotation mode, ABP flag and tick
 	void ApplyLockOnState(bool bLockedOn);

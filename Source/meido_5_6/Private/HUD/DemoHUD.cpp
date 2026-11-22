@@ -13,6 +13,8 @@ void ADemoHUD::BeginPlay()
 
 void ADemoHUD::HandleFlowStateChanged(const EFlowState NewState)
 {
+	SetGameplayHUDVisible(NewState == EFlowState::Playing || NewState == EFlowState::Paused);
+
 	if (FlowWidget)
 	{
 		FlowWidget->RemoveFromParent();

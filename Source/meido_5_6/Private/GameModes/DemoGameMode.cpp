@@ -15,6 +15,7 @@ void ADemoGameMode::StartPlay()
 
 	PlayerController = UGameplayStatics::GetPlayerController(this, 0);
 	CameraManager = CastChecked<ADemoCameraManager>(PlayerController->PlayerCameraManager);
+
 	PlayerMaid = CastChecked<APlayerMaidCharacter>(PlayerController->GetPawn());
 	PlayerMaid->GetHealthComponent()->OnHealthDepleted.AddDynamic(this, &ADemoGameMode::HandlePlayerHealthDepleted);
 

@@ -36,9 +36,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowStateChanged, EFlowState, New
 //  Playing --player died--> Losing --camera done--> Lose
 //  Win/Lose --StartGame (retry)--> Starting
 //
-// player input only while Playing, enemy AI while Playing or Paused
-// The transitions last as long as their camera blend (ADemoCameraManager, set on BP_MaidPlayerController)
-// Listeners: ADemoHUD (flow widgets), BP_PlayerMaid (expressions)
+// player input only while Playing, enemy AI while Playing or Paused (and not frozen by K)
+// The transitions last as long as their camera blend (ADemoCameraManager, set by ADemoPlayerController)
+// Listeners: ADemoHUD (flow widgets, gameplay HUD visibility), BP_PlayerMaid (expressions)
 UCLASS()
 class MEIDO_5_6_API ADemoGameMode : public AGameModeBase
 {
@@ -52,8 +52,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Flow")
 	void StartGame();
 
+	// P and K (ADemoPlayerController)
 	void TogglePause();
-
 	void ToggleDebugEnemyAI();
 
 	UFUNCTION(BlueprintPure, Category="Flow")

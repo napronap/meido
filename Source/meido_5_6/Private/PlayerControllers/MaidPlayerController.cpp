@@ -5,39 +5,35 @@
 #include "ActorComponents/LockOnComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Characters/PlayerMaidCharacter.h"
+#include "DataAssets/PlayerInputConfig.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
-#include "Engine/World.h"
-#include "GameModes/DemoGameMode.h"
 #include "Interfaces/Targetable.h"
 
 void AMaidPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer())->AddMappingContext(DefaultIMC, 0);
+	ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer())->AddMappingContext(InputConfig->MappingContext, 0);
 
 	UEnhancedInputComponent* EnhancedInput = CastChecked<UEnhancedInputComponent>(InputComponent);
 
-	EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMaidPlayerController::Move);
-	EnhancedInput->BindAction(MoveAction, ETriggerEvent::Completed, this, &AMaidPlayerController::StopMove);
-	EnhancedInput->BindAction(LookAction, ETriggerEvent::Triggered, this, &AMaidPlayerController::Look);
-	EnhancedInput->BindAction(JumpAction, ETriggerEvent::Started, this, &AMaidPlayerController::Jump);
-	EnhancedInput->BindAction(JumpAction, ETriggerEvent::Completed, this, &AMaidPlayerController::StopJumping);
-	EnhancedInput->BindAction(DashAction, ETriggerEvent::Started, this, &AMaidPlayerController::Dash);
+	EnhancedInput->BindAction(InputConfig->MoveAction, ETriggerEvent::Triggered, this, &AMaidPlayerController::Move);
+	EnhancedInput->BindAction(InputConfig->MoveAction, ETriggerEvent::Completed, this, &AMaidPlayerController::StopMove);
+	EnhancedInput->BindAction(InputConfig->LookAction, ETriggerEvent::Triggered, this, &AMaidPlayerController::Look);
+	EnhancedInput->BindAction(InputConfig->JumpAction, ETriggerEvent::Started, this, &AMaidPlayerController::Jump);
+	EnhancedInput->BindAction(InputConfig->JumpAction, ETriggerEvent::Completed, this, &AMaidPlayerController::StopJumping);
+	EnhancedInput->BindAction(InputConfig->DashAction, ETriggerEvent::Started, this, &AMaidPlayerController::Dash);
 
-	EnhancedInput->BindAction(AttackAction, ETriggerEvent::Started, this, &AMaidPlayerController::Attack);
-	EnhancedInput->BindAction(MeiDouMoeAction, ETriggerEvent::Started, this, &AMaidPlayerController::MeiDouMoe);
-	EnhancedInput->BindAction(MeiDouKyunAction, ETriggerEvent::Started, this, &AMaidPlayerController::MeiDouKyun);
-	EnhancedInput->BindAction(MeiDouNyanAction, ETriggerEvent::Started, this, &AMaidPlayerController::MeiDouNyan);
+	EnhancedInput->BindAction(InputConfig->AttackAction, ETriggerEvent::Started, this, &AMaidPlayerController::Attack);
+	EnhancedInput->BindAction(InputConfig->MeiDouMoeAction, ETriggerEvent::Started, this, &AMaidPlayerController::MeiDouMoe);
+	EnhancedInput->BindAction(InputConfig->MeiDouKyunAction, ETriggerEvent::Started, this, &AMaidPlayerController::MeiDouKyun);
+	EnhancedInput->BindAction(InputConfig->MeiDouNyanAction, ETriggerEvent::Started, this, &AMaidPlayerController::MeiDouNyan);
 
-	EnhancedInput->BindAction(LockOnAction, ETriggerEvent::Started, this, &AMaidPlayerController::ToggleLockOn);
+	EnhancedInput->BindAction(InputConfig->LockOnAction, ETriggerEvent::Started, this, &AMaidPlayerController::ToggleLockOn);
 	// Started fires once per key press/stick push until it's released
-	EnhancedInput->BindAction(SwitchLockOnAction, ETriggerEvent::Started, this, &AMaidPlayerController::SwitchLockOnTarget);
-
-	EnhancedInput->BindAction(PauseAction, ETriggerEvent::Started, this, &AMaidPlayerController::TogglePause);
-	EnhancedInput->BindAction(DebugToggleAIAction, ETriggerEvent::Started, this, &AMaidPlayerController::ToggleDebugEnemyAI);
+	EnhancedInput->BindAction(InputConfig->SwitchLockOnAction, ETriggerEvent::Started, this, &AMaidPlayerController::SwitchLockOnTarget);
 }
 
 void AMaidPlayerController::OnPossess(APawn* InPawn)
@@ -135,14 +131,4 @@ void AMaidPlayerController::ToggleLockOn()
 void AMaidPlayerController::SwitchLockOnTarget(const FInputActionValue& Value)
 {
 	PlayerMaid->GetLockOnComponent()->SwitchTarget(Value.Get<float>() > 0.f ? 1 : -1);
-}
-
-void AMaidPlayerController::TogglePause()
-{
-	GetWorld()->GetAuthGameMode<ADemoGameMode>()->TogglePause();
-}
-
-void AMaidPlayerController::ToggleDebugEnemyAI()
-{
-	GetWorld()->GetAuthGameMode<ADemoGameMode>()->ToggleDebugEnemyAI();
 }

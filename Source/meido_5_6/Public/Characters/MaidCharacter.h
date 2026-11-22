@@ -106,6 +106,8 @@ public:
 	// for external listeners of OnHealthChanged/ OnHealthDepleted (GameMode)
 	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
 
+	// this method is exclusive for use in the GM_Meido (demo)
+	// TODO: remove at some point
 	virtual void ResetForFlowRestart();
 
 protected:

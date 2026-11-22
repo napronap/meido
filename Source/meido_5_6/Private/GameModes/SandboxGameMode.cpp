@@ -28,6 +28,12 @@ void ASandboxGameMode::SetAllEnemyAIEnabled() const
 {
 	for (TActorIterator<AEnemyMaid> Enemy(GetWorld()); Enemy; ++Enemy)
 	{
+		// dead: Die already turned its AI off for good
+		if (Enemy->IsDead())
+		{
+			continue;
+		}
+
 		CastChecked<AEnemyMaidAIController>(Enemy->GetController())->SetAIEnabled(!bDebugEnemyAIDisabled);
 	}
 }

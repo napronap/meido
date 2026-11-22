@@ -5,6 +5,7 @@
 #include "ActorComponents/LockOnComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimMontage.h"
 
@@ -49,5 +50,18 @@ void APlayerMaidCharacter::ResetForFlowRestart()
 	if (GetUpMontage)
 	{
 		PlayAnimMontage(GetUpMontage);
+	}
+}
+
+void APlayerMaidCharacter::SetExpression(const EMaidExpression Expression)
+{
+	GetMesh()->ClearMorphTargets();
+
+	if (const FMaidExpression* Found = Expressions.Find(Expression))
+	{
+		for (const TPair<FName, float>& MorphTarget : Found->MorphTargets)
+		{
+			GetMesh()->SetMorphTarget(MorphTarget.Key, MorphTarget.Value);
+		}
 	}
 }

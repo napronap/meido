@@ -9,6 +9,7 @@ class AEnemyMaid;
 class AEnemyWaveSpawner;
 class APlayerController;
 class APlayerMaidCharacter;
+class UAnimMontage;
 class UHealthComponent;
 
 UENUM(BlueprintType)
@@ -38,7 +39,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowStateChanged, EFlowState, New
 //
 // player input only while Playing, enemy AI while Playing or Paused (and not frozen by K)
 // The transitions last as long as their camera blend (ADemoCameraManager, set by ADemoPlayerController)
-// Listeners: ADemoHUD (flow widgets, gameplay HUD visibility), BP_PlayerMaid (expressions)
+// The maid's pose and expression per state are set here: menu pose + wink, neutral once Playing, win montage + happy
+// Listeners: ADemoHUD (flow widgets, gameplay HUD visibility)
 UCLASS()
 class MEIDO_5_6_API ADemoGameMode : public AGameModeBase
 {
@@ -104,6 +106,16 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="Camera", meta=(ClampMin="0.01"))
 	float GameplayBlendTime = 1.25f;
+
+	// main menu: the maid holds this montage's pose, played from MenuPoseSection
+	UPROPERTY(EditDefaultsOnly, Category="Flow")
+	TObjectPtr<UAnimMontage> MenuPoseMontage;
+
+	UPROPERTY(EditDefaultsOnly, Category="Flow")
+	FName MenuPoseSection = TEXT("PoseStart");
+
+	UPROPERTY(EditDefaultsOnly, Category="Flow")
+	TObjectPtr<UAnimMontage> WinMontage;
 
 	FTimerHandle TransitionTimerHandle;
 

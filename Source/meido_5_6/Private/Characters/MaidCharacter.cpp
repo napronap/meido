@@ -259,6 +259,8 @@ void AMaidCharacter::Die()
 		MovementComponent->StopMovementImmediately();
 		MovementComponent->DisableMovement();
 	}
+	
+	SetActorEnableCollision(false);
 
 	if (DeathLifeSpanSeconds > 0.f)
 	{
@@ -332,6 +334,8 @@ void AMaidCharacter::ResetForFlowRestart()
 	NextDamageSectionIndex = 0;
 
 	SetLifeSpan(0.f);
+	
+	SetActorEnableCollision(true);
 
 	if (AttackComponent)
 	{

@@ -17,6 +17,10 @@ struct FMeiDouCombo
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FName Id;
 
+	// shown big by the HUD when the combo resolves
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FText DisplayName;
+
 	// this is compared in order against the input buffer
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TArray<EMeiDouInput> Inputs;

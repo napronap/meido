@@ -33,8 +33,11 @@ void UMeiDouComponent::RegisterInput(const EMeiDouInput Input)
 {
 	switch (State)
 	{
+	// the HUD shows a pose as soon as it's accepted
+	// TODO: showing it on posing would require an intermediate state
 	case EMeiDouState::EMDS_Idle:
 		PlayPose(Input);
+		OnMeiDouPoseQueued.Broadcast(Input);
 		return;
 
 	case EMeiDouState::EMDS_Posing:
@@ -42,6 +45,7 @@ void UMeiDouComponent::RegisterInput(const EMeiDouInput Input)
 		if (ComboInputBuffer.Num() < 3 && QueuedInput == EMeiDouInput::None)
 		{
 			QueuedInput = Input;
+			OnMeiDouPoseQueued.Broadcast(Input);
 		}
 		return;
 
@@ -78,12 +82,14 @@ void UMeiDouComponent::Resolve()
 	{
 		State = EMeiDouState::EMDS_Failed;
 		PlayMontage(PoseSet->FailMontage, 1.f);
+		OnMeiDouComboDropped.Broadcast();
 		return;
 	}
 
 	ActiveCombo = *Combo;
 	State = EMeiDouState::EMDS_Result;
 	PlayMontage(Combo->Montage, 1.f);
+	OnMeiDouResultExecuted.Broadcast(Combo->DisplayName);
 }
 
 void UMeiDouComponent::HandleAnimEvent(const EMeiDouAnimEvent Event, const UAnimSequenceBase* Animation)
@@ -119,20 +125,28 @@ void UMeiDouComponent::HandleAnimEvent(const EMeiDouAnimEvent Event, const UAnim
 			State = EMeiDouState::EMDS_Idle;
 			SetMirrorFlag(false);
 
-			// start the combo timeout timer
+			// combo timeout timer
 			GetWorld()->GetTimerManager().SetTimer(
 				ComboInputTimeoutHandle,
 				this,
-				&UMeiDouComponent::ResetCombo,
+				&UMeiDouComponent::HandleComboTimeout,
 				ComboInputTimeoutSeconds,
 				false
 			);
 			return;
 		}
 
+		// the result is over at its ActionEnd and what's left of the montage blends out now, 
+		// with the montage's own BlendOut (will trigger the delegate but will be ignored on the first check)
 		if (State == EMeiDouState::EMDS_Result)
 		{
+			// cleared first so neither this blend out nor a notify left in the tail are taken for this action
+			UAnimMontage* ResultMontage = CurrentMontage;
+			CurrentMontage = nullptr;
+			CurrentInstanceId = INDEX_NONE;
+
 			EndAction();
+			OwnerCharacter->StopAnimMontage(ResultMontage);
 		}
 		return;
 
@@ -178,7 +192,10 @@ void UMeiDouComponent::ResetCombo()
 void UMeiDouComponent::PlayMontage(UAnimMontage* Montage, const float PlayRate, const FName Section)
 {
 	CurrentMontage = Montage;
-	
+	// the previous MeiDou montage blends out inside PlayAnimMontage, and outside of a montage update (an input) 
+	// need to clear the id first so that the blend out delegate doesn't mistake the first check
+	CurrentInstanceId = INDEX_NONE;
+
 	OwnerCharacter->GetCharacterMovement()->StopMovementImmediately();
 	OwnerCharacter->PlayAnimMontage(Montage, PlayRate, Section);
 
@@ -213,8 +230,13 @@ void UMeiDouComponent::HandleMontageBlendingOut(UAnimMontage* Montage, bool bInt
 			State = EMeiDouState::EMDS_Idle;
 			break;
 
-		// any other normal pose ended (flow reset or death?)
+		// a pose cut before its ActionEnd (death or a flow reset)
 		case EMeiDouState::EMDS_Posing:
+			EndAction();
+			OnMeiDouComboDropped.Broadcast();
+			break;
+
+		// a result cut before its ActionEnd
 		case EMeiDouState::EMDS_Result:
 			EndAction();
 			break;
@@ -256,4 +278,10 @@ void UMeiDouComponent::ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig)
 	Result->FinishSpawning(SpawnTransform);
 
 	SpawnedResult = Result;
+}
+
+void UMeiDouComponent::HandleComboTimeout() 
+{
+	ResetCombo();
+	OnMeiDouComboDropped.Broadcast();
 }

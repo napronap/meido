@@ -16,6 +16,20 @@ class UAnimSequenceBase;
 class UAttackComponent;
 class ULockOnComponent;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FOnMeiDouPoseQueued,
+	EMeiDouInput, Pose
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FOnMeiDouResultExecuted,
+	const FText&, ComboName
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(
+	FOnMeiDouComboDropped
+);
+
 // MeiDou: three poses in a row resolve into a combo (ComboData) or a fail
 //
 //  input -> pose montage -> ActionEnd notify: next pose (if queued) or resolve on the 3rd (combo result)
@@ -44,6 +58,16 @@ public:
 	// fail montage playing
 	bool IsFailed() const { return State == EMeiDouState::EMDS_Failed; }
 
+	// for the HUD's MeiDou indicator
+	UPROPERTY(BlueprintAssignable, Category="MeiDou")
+	FOnMeiDouPoseQueued OnMeiDouPoseQueued;
+
+	UPROPERTY(BlueprintAssignable, Category="MeiDou")
+	FOnMeiDouResultExecuted OnMeiDouResultExecuted;
+
+	UPROPERTY(BlueprintAssignable, Category="MeiDou")
+	FOnMeiDouComboDropped OnMeiDouComboDropped;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -55,6 +79,7 @@ private:
 	void HandleMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted, int32 InstanceId);
 	void ResetCombo();
 	void SetMirrorFlag(bool bShouldMirror) const;
+	void HandleComboTimeout();
 
 	void ExecuteSpawnResult(const FMeiDouSpawnConfig& SpawnConfig);
 

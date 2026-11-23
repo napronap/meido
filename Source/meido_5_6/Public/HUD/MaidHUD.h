@@ -4,11 +4,10 @@
 #include "GameFramework/HUD.h"
 #include "MaidHUD.generated.h"
 
-class UHealthComponent;
-class UPlayerHUDWidget;
+class UUserWidget;
 
-// Gameplay HUD for any game mode: the player's health bar (PlayerHUDClass, WBP_PlayerHUD)
-// Each game mode picks its HUD class; ADemoHUD adds the flow widgets on top
+// Gameplay HUD for any game mode
+// shows the player's HUD widget (PlayerHUDClass, WBP_PlayerHUD), which binds itself to the player's health and MeiDou
 UCLASS()
 class MEIDO_5_6_API AMaidHUD : public AHUD
 {
@@ -20,12 +19,9 @@ protected:
 	void SetGameplayHUDVisible(bool bVisible) const;
 
 private:
-	UFUNCTION()
-	void HandleHealthChanged(UHealthComponent* HealthComponent, float CurrentHealth, float MaxHealth, float Delta);
-
 	UPROPERTY(EditDefaultsOnly, Category="HUD")
-	TSubclassOf<UPlayerHUDWidget> PlayerHUDClass;
+	TSubclassOf<UUserWidget> PlayerHUDClass;
 
 	UPROPERTY()
-	TObjectPtr<UPlayerHUDWidget> PlayerHUD;
+	TObjectPtr<UUserWidget> PlayerHUD;
 };

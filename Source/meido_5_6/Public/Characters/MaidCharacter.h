@@ -104,10 +104,12 @@ public:
 	// free to start a new action (jump, dash)
 	bool CanAct() const;
 
-	// for external listeners of OnHealthChanged/OnHealthDepleted (GameMode)
+	// for external listeners of OnHealthChanged/OnHealthDepleted (GameMode, WBP_PlayerHUD)
+	UFUNCTION(BlueprintPure, Category="Health")
 	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
 
-	// for the HUD's MeiDou indicator
+	// for WBP_PlayerHUD's MeiDou indicator
+	UFUNCTION(BlueprintPure, Category="MeiDou")
 	UMeiDouComponent* GetMeiDouComponent() const { return MeiDouComponent; }
 
 	// this method is exclusive for use in the GM_Meido (demo)

@@ -30,6 +30,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(
 	FOnMeiDouComboDropped
 );
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(
+	FOnMeiDouResultEnded
+);
+
 // MeiDou: three poses in a row resolve into a combo (ComboData) or a fail
 //
 //  input -> pose montage -> ActionEnd notify: next pose (if queued) or resolve on the 3rd (combo result)
@@ -67,6 +71,10 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category="MeiDou")
 	FOnMeiDouComboDropped OnMeiDouComboDropped;
+
+	// a result finished (or was cut), or a pose was cut (death, flow reset): the HUD clears its slots
+	UPROPERTY(BlueprintAssignable, Category="MeiDou")
+	FOnMeiDouResultEnded OnMeiDouResultEnded;
 
 protected:
 	virtual void BeginPlay() override;

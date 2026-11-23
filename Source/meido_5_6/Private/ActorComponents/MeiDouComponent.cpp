@@ -178,6 +178,7 @@ void UMeiDouComponent::EndAction()
 	ResetCombo();
 	ActiveCombo = FMeiDouCombo();
 	State = EMeiDouState::EMDS_Idle;
+	OnMeiDouResultEnded.Broadcast();
 }
 
 void UMeiDouComponent::ResetCombo()
@@ -230,10 +231,9 @@ void UMeiDouComponent::HandleMontageBlendingOut(UAnimMontage* Montage, bool bInt
 			State = EMeiDouState::EMDS_Idle;
 			break;
 
-		// a pose cut before its ActionEnd (death or a flow reset)
+		// a pose cut before its ActionEnd (death or a flow reset): EndAction's OnMeiDouResultEnded clears the HUD
 		case EMeiDouState::EMDS_Posing:
 			EndAction();
-			OnMeiDouComboDropped.Broadcast();
 			break;
 
 		// a result cut before its ActionEnd

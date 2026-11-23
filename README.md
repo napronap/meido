@@ -1,8 +1,8 @@
 [日本語版は下にあります](#日本語)
 
-## Moe Attack
+## Moeru Attack
 
-Moe Attack started from a question: what if the maid café "moe moe kyun" were a combat system? The player inputs three poses (Moe, Kyun, Nyan), and each sequence of three triggers a different technique.
+Moeru Attack started from a question: what if the maid café "moe moe kyun" were a combat system? The player inputs three poses (Moe, Kyun, Nyan), and each sequence of three triggers a different technique.
 
 Join the maid Aki in defeating the enemy maids on her way to make her maid cafe the most popular in Akihabara!
 
@@ -27,11 +27,13 @@ The project uses the [VRM4U](https://github.com/ruyo/VRM4U) third party plugin (
 | --- | --- |
 | WASD | Move |
 | LMB | Attack |
+| RMB | Dash |
+| Wheel button | Toggle Lock-on on/off |
+| E/Q | Change Lock-on target |
 | 1 | Pose "Moe" |
 | 2 | Pose "Kyun" |
 | 3 | Pose "Nyan" |
-| Left Shift | Dash |
-| P | Pause |
+| Esc | Pause |
 | K | Stop AI (debug) |
 
 ### Match rules
@@ -44,19 +46,19 @@ There are three different pose combos you can perform. Input the poses in the co
 | --- | --- |
 | MMK | Oishiku nare~: summon a giant omurice to hit your enemies |
 | MKN | Maid beam: shoot a beam to defeat villain maids |
-| NNN | Nyan~!: jump forward in a cat attack to deal damage |
+| NNN | Nyan punch~!: jump forward in a cat attack to deal damage |
 
 ## AI usage disclosure
 
-AI was used for some minor code optimizations and the camera sequences for start/win/lose.
+Previous AI generated code was removed and it was later used for review and cleanup of code smells; and to assist me in the process of learning.
 
 ---
 
 ## 日本語
 
-### 萌えアタック
+### 萌えるアタック
 
-萌えアタックは「メイドカフェの『萌え萌えキュン』が戦闘システムだったら？」という発想から生まれたゲームです。プレイヤーは3つのポーズ（萌え・キュン・ニャン）を入力し、3つの組み合わせごとに異なる技が発動します。
+萌えるアタックは「メイドカフェの『萌え萌えキュン』が戦闘システムだったら？」という発想から生まれたゲームです。プレイヤーは3つのポーズ（萌え・キュン・ニャン）を入力し、3つの組み合わせごとに異なる技が発動します。
 
 メイドのアキと一緒に、行く手を阻む敵メイドたちを倒して、アキのメイドカフェを秋葉原でいちばんの人気店にしよう！
 
@@ -81,11 +83,13 @@ UE 5.6が必要です。
 | --- | --- |
 | WASD | 移動 |
 | 左クリック | 攻撃 |
+| 右クリック | ダッシュ |
+| ホイールクリック | ロックオンのオン/オフ |
+| E/Q | ロックオン対象の切り替え |
 | 1 | ポーズ「萌え」 |
 | 2 | ポーズ「キュン」 |
 | 3 | ポーズ「ニャン」 |
-| 左Shift | ダッシュ |
-| P | 一時停止 |
+| Esc | 一時停止 |
 | K | AI停止（デバッグ用） |
 
 #### ルール
@@ -98,8 +102,8 @@ UE 5.6が必要です。
 | --- | --- |
 | MMK | おいしくなーれ：巨大オムライスを召喚して敵を攻撃 |
 | MKN | メイドビーム：ビームを放って悪役メイドを倒す |
-| NNN | ニャン～！：猫のように前へ飛びかかってダメージを与える |
+| NNN | ニャンパンチ～！：猫のように前へ飛びかかってダメージを与える |
 
 ### AIの使用について
 
-一部の軽微なコードの最適化と、スタート・勝利・敗北時のカメラシーケンスにAIを使用しました。
+以前AIで生成したコードは削除しました。その後AIは、コードのレビューとコードスメルの整理、そして自分の学習の補助として使用しています。

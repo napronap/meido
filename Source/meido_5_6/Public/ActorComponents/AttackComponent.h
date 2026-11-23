@@ -39,6 +39,7 @@ public:
 
 	// true from the first step until the last played step's montage ends (recovery included)
 	bool IsAttacking() const { return CurrentStep != INDEX_NONE; }
+	int32 GetCurrentStep() const { return CurrentStep; }
 
 	// called by the combo notifies with the montage that fired them
 	void OpenComboHitWindow(const UAnimSequenceBase* Animation);

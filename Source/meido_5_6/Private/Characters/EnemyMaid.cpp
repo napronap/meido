@@ -15,6 +15,11 @@ AEnemyMaid::AEnemyMaid()
 	GetCharacterMovement()->bUseRVOAvoidance = true;
 	GetCharacterMovement()->AvoidanceConsiderationRadius = 180.f;
 
+	// !! THIS is the combination for the BT and its BTT to work correctly !!
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->bUseControllerDesiredRotation = true;
+	// !!
+
 	// path following moves through acceleration (like player input) instead of setting velocity directly
 	// the ABP's ShouldMove needs GetCurrentAcceleration != 0 to enter Walk/Run
 	GetCharacterMovement()->GetNavMovementProperties()->bUseAccelerationForPaths = true;

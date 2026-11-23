@@ -30,8 +30,11 @@ public:
 
 	// movement/combat actions (player or AI), each one gates itself
 	void DoMove(float Right, float Forward);
+	
 	// AimInput is the move input, not camera input !!
+	UFUNCTION(BlueprintCallable, Category="Maid|Actions")
 	void DoStartComboAttack(const FVector2D& AimInput = FVector2D::ZeroVector);
+	
 	bool DoDash(const FVector2D& MoveInput = FVector2D::ZeroVector, bool bLockOnActive = false);
 	virtual void Jump() override;
 	void RegisterMeiDouInput(EMeiDouInput Input);
@@ -92,13 +95,21 @@ protected:
 
 public:
 	// state queries, always ask the owning component
+	UFUNCTION(BlueprintPure, Category="Maid|State")
 	bool IsAttacking() const;
+	// step of the combo playing: 0, 1, 2... (INDEX_NONE when not attacking)
+	UFUNCTION(BlueprintPure, Category="Maid|State")
+	int32 GetComboStep() const;
 	bool IsDashing() const;
 	bool IsMeiDouActive() const;
+	
 	// stunned by a failed MeiDou combo (can't act, takes no damage)
 	// TODO: maybe take damage you know
 	bool IsMeiDouFailed() const;
+	
 	bool IsHitReacting() const { return bDamageReactionActive; }
+	
+	UFUNCTION(BlueprintPure, Category="Maid|State")
 	bool IsDead() const;
 
 	// free to start a new action (jump, dash)

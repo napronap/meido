@@ -291,6 +291,11 @@ bool AMaidCharacter::IsAttacking() const
 	return AttackComponent->IsAttacking();
 }
 
+int32 AMaidCharacter::GetComboStep() const
+{
+	return AttackComponent->GetCurrentStep();
+}
+
 bool AMaidCharacter::IsDashing() const
 {
 	// enemies have no dash component

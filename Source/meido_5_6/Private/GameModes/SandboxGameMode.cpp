@@ -8,14 +8,14 @@ void ASandboxGameMode::StartPlay()
 {
 	Super::StartPlay();
 
-	// the enemies placed in the map, then the ones the spawners bring
-	SetAllEnemyAIEnabled();
-
-	for (TActorIterator<AEnemyWaveSpawner> Spawner(GetWorld()); Spawner; ++Spawner)
-	{
-		Spawner->OnEnemySpawned.AddDynamic(this, &ASandboxGameMode::HandleEnemySpawned);
-		Spawner->StartWave();
-	}
+	// // the enemies placed in the map, then the ones the spawners bring
+	// SetAllEnemyAIEnabled();
+	//
+	// for (TActorIterator<AEnemyWaveSpawner> Spawner(GetWorld()); Spawner; ++Spawner)
+	// {
+	// 	Spawner->OnEnemySpawned.AddDynamic(this, &ASandboxGameMode::HandleEnemySpawned);
+	// 	Spawner->StartWave();
+	// }
 }
 
 void ASandboxGameMode::ToggleDebugEnemyAI()

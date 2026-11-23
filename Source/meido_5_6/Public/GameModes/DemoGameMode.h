@@ -16,6 +16,7 @@ UENUM(BlueprintType)
 enum class EFlowState : uint8
 {
 	MainMenu UMETA(DisplayName = "MainMenu"),
+	Tutorial UMETA(DisplayName = "Tutorial"),
 	Paused   UMETA(DisplayName = "Paused"),
 	
 	Starting UMETA(DisplayName = "Starting"),
@@ -32,10 +33,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowStateChanged, EFlowState, New
 
 // Game flow
 //
-//  MainMenu --StartGame--> Starting --camera done--> Playing <--TogglePause--> Paused
+//  MainMenu --StartGame-> Starting --camera done-> Tutorial (only once) --StartPlaying ->Playing <--TogglePause--> Paused
 //  Playing --wave completed--> Winning --camera done--> Win
-//  Playing --player died--> Losing --camera done--> Lose
-//  Win/Lose/Paused --StartGame (retry)--> Starting
+//  Playing --player died-> Losing --camera done-> Lose
+//  Win/Lose/Paused --StartGame (retry)-> Starting
 //
 // player input only while Playing, enemy AI while Playing or Paused (and not frozen by K)
 // The transitions last as long as their camera blend (ADemoCameraManager, set by ADemoPlayerController)
@@ -53,6 +54,10 @@ public:
 	// main menu Start and the Win/Lose/Pause retry buttons
 	UFUNCTION(BlueprintCallable, Category="Flow")
 	void StartGame();
+
+	// end of tutorial
+	UFUNCTION(BlueprintCallable, Category="Flow")
+	void StartPlaying();
 
 	// P and K (ADemoPlayerController)
 	void TogglePause();
@@ -92,6 +97,8 @@ private:
 	EFlowState FlowState = EFlowState::MainMenu;
 
 	bool bDebugEnemyAIDisabled = false;
+	
+	bool bTutorialShown = false;
 
 	// camera per flow state: menu (snapped at start) and win in front of the maid, lose from above
 	UPROPERTY(EditDefaultsOnly, Category="Camera")

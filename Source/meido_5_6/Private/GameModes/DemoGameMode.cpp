@@ -45,6 +45,12 @@ void ADemoGameMode::StartGame()
 	CameraManager->BlendToPawn(GameplayPitch, GameplayBlendTime);
 }
 
+void ADemoGameMode::StartPlaying()
+{
+	SetFlowState(EFlowState::Playing);
+	WaveSpawner->StartWave();
+}
+
 void ADemoGameMode::TogglePause()
 {
 	if (FlowState == EFlowState::Playing)
@@ -69,8 +75,13 @@ void ADemoGameMode::FinishTransition()
 	{
 	case EFlowState::Starting:
 		PlayerMaid->SetExpression(EMaidExpression::Neutral);
-		SetFlowState(EFlowState::Playing);
-		WaveSpawner->StartWave();
+		if (!bTutorialShown)
+		{
+			bTutorialShown = true;
+			SetFlowState(EFlowState::Tutorial);
+			return;
+		}
+		StartPlaying();
 		return;
 
 	case EFlowState::Winning:

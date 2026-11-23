@@ -12,6 +12,5 @@ void AMaidHUD::BeginPlay()
 
 void AMaidHUD::SetGameplayHUDVisible(const bool bVisible) const
 {
-	// the HUD never takes clicks
-	PlayerHUD->SetVisibility(bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	PlayerHUD->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 }

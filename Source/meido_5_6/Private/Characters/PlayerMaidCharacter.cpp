@@ -68,3 +68,11 @@ void APlayerMaidCharacter::SetExpression(const EMaidExpression Expression)
 		}
 	}
 }
+
+bool APlayerMaidCharacter::CanTakeDamage() const 
+{
+	// the only reason fail doesn't take damage is because the montage is super long
+	// at some point I should come up with failed actually doing damage in some way so there's some reward
+	// and failing doesn't make it so that you just did 3 inputs for no reason :shrug:
+	return !MeiDouComponent->IsPlayingResult() && !MeiDouComponent->IsFailed();
+}

@@ -62,6 +62,8 @@ public:
 	// fail montage playing
 	bool IsFailed() const { return State == EMeiDouState::EMDS_Failed; }
 
+	bool IsPlayingResult() const { return State == EMeiDouState::EMDS_Result; }
+
 	// for the HUD's MeiDou indicator
 	UPROPERTY(BlueprintAssignable, Category="MeiDou")
 	FOnMeiDouPoseQueued OnMeiDouPoseQueued;

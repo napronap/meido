@@ -67,4 +67,6 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, Category="Expression")
 	TMap<EMaidExpression, FMaidExpression> Expressions;
+
+	virtual bool CanTakeDamage() const override;
 };

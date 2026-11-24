@@ -55,12 +55,12 @@ float AMaidCharacter::TakeDamage(
 		return 0.f;
 	}
 
-	if (IsMeiDouFailed())
+	if (HasActiveIFrames())
 	{
 		return 0.f;
 	}
 
-	if (HasActiveIFrames())
+	if (!CanTakeDamage()) 
 	{
 		return 0.f;
 	}

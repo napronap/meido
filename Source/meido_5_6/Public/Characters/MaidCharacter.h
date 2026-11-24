@@ -56,6 +56,9 @@ protected:
 	FOnMontageEnded OnDamageMontageEnded;
 	void DamageMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
+	// for child classes to define their own conditions
+	virtual bool CanTakeDamage() const { return true; }
+
 	// MeiDou
 	// created by APlayerMaidCharacter (null on enemies)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MeiDou")

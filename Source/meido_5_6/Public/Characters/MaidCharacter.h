@@ -106,7 +106,8 @@ public:
 	// stunned by a failed MeiDou combo (can't act, takes no damage)
 	// TODO: maybe take damage you know
 	bool IsMeiDouFailed() const;
-	
+
+	UFUNCTION(BlueprintPure, Category="Maid|State")
 	bool IsHitReacting() const { return bDamageReactionActive; }
 	
 	UFUNCTION(BlueprintPure, Category="Maid|State")

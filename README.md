@@ -17,6 +17,8 @@ Needs UE 5.6
 3. Run `build.bat`
 4. Run `editor.bat` or just open `meido_5_6.uproject`
 
+To create a Windows package run `package-windows.bat` (creates a shipping build by default)
+
 The project uses the [VRM4U](https://github.com/ruyo/VRM4U) third party plugin (already present in this repo)
 
 ## How to play
@@ -34,11 +36,11 @@ The project uses the [VRM4U](https://github.com/ruyo/VRM4U) third party plugin (
 | 2 | Pose "Kyun" |
 | 3 | Pose "Nyan" |
 | Esc | Pause |
-| K | Stop AI (debug) |
+| K | Stop AI (debug, currently shipped in the shipping build though) |
 
 ### Match rules
 
-Defeat the 7 enemy maids that come to attack you. You win after you defeat them all, and then you can restart to try again.
+Defeat the 10 enemy maids that come to attack you. You win after you defeat them all, and then you can restart to try again.
 
 There are three different pose combos you can perform. Input the poses in the correct order to launch special attacks. If you input an incorrect sequence, you will upset Aki!
 
@@ -73,6 +75,8 @@ UE 5.6が必要です。
 3. `build.bat` を実行する
 4. `editor.bat` を実行するか、`meido_5_6.uproject` を直接開く
 
+Windows向けのパッケージを作成するには `package-windows.bat` を実行してください（デフォルトではShippingビルドが作成されます）。
+
 本プロジェクトはサードパーティ製プラグイン [VRM4U](https://github.com/ruyo/VRM4U) を使用しています（このリポジトリに同梱済み）。
 
 ### 遊び方
@@ -90,11 +94,11 @@ UE 5.6が必要です。
 | 2 | ポーズ「キュン」 |
 | 3 | ポーズ「ニャン」 |
 | Esc | 一時停止 |
-| K | AI停止（デバッグ用） |
+| K | AI停止（デバッグ用。ただし現状はShippingビルドにも含まれています） |
 
 #### ルール
 
-襲ってくる7人の敵メイドを倒しましょう。全員倒すと勝利で、その後リスタートしてもう一度挑戦できます。
+襲ってくる10人の敵メイドを倒しましょう。全員倒すと勝利で、その後リスタートしてもう一度挑戦できます。
 
 ポーズのコンボは3種類あります。正しい順番でポーズを入力すると必殺技が発動します。間違った順番で入力すると、アキが怒ってしまいます！
 

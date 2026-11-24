@@ -3,9 +3,9 @@
 using UnrealBuildTool;
 using System.Collections.Generic;
 
-public class meido_5_6Target : TargetRules
+public class MoeruAttackTarget : TargetRules
 {
-	public meido_5_6Target(TargetInfo Target) : base(Target)
+	public MoeruAttackTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Game;
 		DefaultBuildSettings = BuildSettingsVersion.V5;
